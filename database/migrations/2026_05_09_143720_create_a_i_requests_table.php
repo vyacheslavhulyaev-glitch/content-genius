@@ -23,7 +23,8 @@ return new class extends Migration
                 ->constrained('contents')
                 ->nullOnDelete();
 
-            $table->string('status')->default('pending');
+            $table->enum('status', ['pending', 'completed', 'failed'])
+                ->default('pending');
 
             $table->unsignedInteger('tokens_used')->nullable();
 
