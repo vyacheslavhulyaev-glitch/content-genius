@@ -40,6 +40,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('a_i_requests');
+        Schema::dropIfExists('ai_requests');
     }
 };

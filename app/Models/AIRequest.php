@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class AIRequest extends Model
 {
+    protected $table = 'ai_requests';
+
     protected $fillable = [
         'user_id',
         'content_id',
