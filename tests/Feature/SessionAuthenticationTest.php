@@ -16,10 +16,7 @@ class SessionAuthenticationTest extends TestCase
     {
         parent::setUp();
 
-        config([
-            'session.driver' => 'database',
-            'sanctum.stateful' => ['localhost:5173'],
-        ]);
+        config(['session.driver' => 'database']);
 
         $this->withCredentials()->withHeader('Origin', 'http://localhost:5173');
     }

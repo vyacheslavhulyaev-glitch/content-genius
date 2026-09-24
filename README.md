@@ -7,6 +7,33 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## ContentGenius local SPA authentication
+
+Use `http://localhost:5173` for React and `http://localhost:8000` for Laravel.
+Start Laravel with `php artisan serve --host=localhost --port=8000`.
+In `/frontend`, use `npm run dev -- --host localhost --port 5173 --strictPort`.
+
+The authentication CORS configuration defaults to this frontend origin and allows credentials
+on `/sanctum/csrf-cookie`, `/login`, `/logout`, and `/api/user` only.
+If local environment overrides exist, use these non-secret settings:
+
+```dotenv
+APP_URL=http://localhost:8000
+FRONTEND_URL=http://localhost:5173
+SANCTUM_STATEFUL_DOMAINS=localhost:5173,localhost:8000
+SESSION_DOMAIN=null
+SESSION_SECURE_COOKIE=false
+SESSION_HTTP_ONLY=true
+SESSION_SAME_SITE=lax
+```
+
+Use a persistent session driver (the default is `database`) with its existing sessions migration applied.
+Run `php artisan config:clear` after changing local configuration.
+Future frontend requests must include credentials and `Accept: application/json`.
+Initialize cookies with `GET /sanctum/csrf-cookie`, then send the URL-decoded
+`XSRF-TOKEN` cookie as `X-XSRF-TOKEN` on login/logout POST requests.
+Keep the session cookie HttpOnly. No frontend integration is implemented yet.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
