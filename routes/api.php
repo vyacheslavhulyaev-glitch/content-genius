@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ContentController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -10,6 +11,8 @@ Route::get('/health', function () {
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
+
+Route::post('/contents', [ContentController::class, 'store'])->middleware('auth:sanctum');
 
 Route::get('/test', function () {
     return 'API works';
