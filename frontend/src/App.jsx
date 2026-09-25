@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 
 const backendUrl = 'http://localhost:8000'
@@ -40,12 +40,64 @@ async function currentUser() {
   return response.json()
 }
 
+function ContentList({ onSessionExpired }) {
+  const [contents, setContents] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+
+    async function loadContents() {
+      try {
+        const response = await request('/api/contents')
+        await requireSuccess(response)
+        const result = await response.json()
+        if (active) setContents(result)
+      } catch (failure) {
+        if (!active) return
+        if (failure.status === 401) {
+          onSessionExpired()
+          return
+        }
+        setError(`Could not load drafts. ${failure.message} Reload the page to retry.`)
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    loadContents()
+    return () => { active = false }
+  }, [onSessionExpired])
+
+  return (
+    <section aria-labelledby="contents-heading">
+      <h2 id="contents-heading">Your content drafts</h2>
+      {loading && <p role="status">Loading drafts...</p>}
+      {error && <p role="alert">{error}</p>}
+      {!loading && !error && contents.length === 0 && <p>No drafts yet.</p>}
+      <ul>
+        {contents.map((content) => (
+          <li key={content.id}>
+            <h3>{content.title}</h3>
+            <p>Topic: {content.topic}</p>
+            <p>Tone: {content.tone || 'Not specified'}</p>
+            <p>Length: {content.length || 'Not specified'}</p>
+            <p>Created at: <time dateTime={content.created_at}>{content.created_at}</time></p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 function DraftForm({ busy, onBusyChange, onSessionExpired }) {
   const [fields, setFields] = useState({ title: '', topic: '', tone: '', length: '' })
   const [draft, setDraft] = useState(null)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
   const [validationErrors, setValidationErrors] = useState({})
+  const [listVersion, setListVersion] = useState(0)
 
   async function createDraft(event) {
     event.preventDefault()
@@ -68,6 +120,7 @@ function DraftForm({ busy, onBusyChange, onSessionExpired }) {
       })
       await requireSuccess(response)
       setDraft(await response.json())
+      setListVersion((version) => version + 1)
       setStatus('Draft created successfully.')
     } catch (failure) {
       if (failure.status === 401) {
@@ -113,6 +166,7 @@ function DraftForm({ busy, onBusyChange, onSessionExpired }) {
           <pre>{JSON.stringify(draft, null, 2)}</pre>
         </>
       )}
+      <ContentList key={listVersion} onSessionExpired={onSessionExpired} />
     </section>
   )
 }
@@ -124,6 +178,11 @@ function App() {
   const [busy, setBusy] = useState(true)
   const [status, setStatus] = useState('Checking session…')
   const [error, setError] = useState('')
+
+  const handleSessionExpired = useCallback(() => {
+    setUser(null)
+    setStatus('Session expired. Log in again to access your drafts.')
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -214,10 +273,7 @@ function App() {
       {error && <p role="alert">{error}</p>}
       {user && (
         <DraftForm key={user.id} busy={busy} onBusyChange={setBusy}
-          onSessionExpired={() => {
-            setUser(null)
-            setStatus('Session expired. Log in again to create a draft.')
-          }} />
+          onSessionExpired={handleSessionExpired} />
       )}
     </main>
   )

@@ -7,6 +7,13 @@ use Illuminate\Http\Request;
 
 class ContentController extends Controller
 {
+    public function index(Request $request): JsonResponse
+    {
+        $contents = $request->user()->contents()->latest()->latest('id')->get();
+
+        return response()->json($contents);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([

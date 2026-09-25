@@ -90,6 +90,7 @@ class SpaCorsTest extends TestCase
             'logout' => ['/logout', 'POST'],
             'current user' => ['/api/user', 'GET'],
             'create content' => ['/api/contents', 'POST'],
+            'list contents' => ['/api/contents', 'GET'],
         ];
     }
 }
