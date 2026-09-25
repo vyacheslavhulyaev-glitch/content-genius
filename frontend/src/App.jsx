@@ -18,7 +18,10 @@ async function request(path, options = {}) {
 async function requireSuccess(response) {
   if (!response.ok) {
     const body = await response.json().catch(() => null)
-    throw new Error(`HTTP ${response.status}: ${body?.message || response.statusText || 'Request failed'}`)
+    const failure = new Error(`HTTP ${response.status}: ${body?.message || response.statusText || 'Request failed'}`)
+    failure.status = response.status
+    failure.errors = body?.errors || {}
+    throw failure
   }
 }
 
@@ -35,6 +38,83 @@ async function currentUser() {
   if (response.status === 401) return null
   await requireSuccess(response)
   return response.json()
+}
+
+function DraftForm({ busy, onBusyChange, onSessionExpired }) {
+  const [fields, setFields] = useState({ title: '', topic: '', tone: '', length: '' })
+  const [draft, setDraft] = useState(null)
+  const [status, setStatus] = useState('')
+  const [error, setError] = useState('')
+  const [validationErrors, setValidationErrors] = useState({})
+
+  async function createDraft(event) {
+    event.preventDefault()
+    onBusyChange(true)
+    setDraft(null)
+    setError('')
+    setValidationErrors({})
+    setStatus('Creating draft...')
+
+    const payload = { title: fields.title.trim(), topic: fields.topic.trim() }
+    for (const field of ['tone', 'length']) {
+      if (fields[field].trim()) payload[field] = fields[field].trim()
+    }
+
+    try {
+      const response = await request('/api/contents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': csrfToken() },
+        body: JSON.stringify(payload),
+      })
+      await requireSuccess(response)
+      setDraft(await response.json())
+      setStatus('Draft created successfully.')
+    } catch (failure) {
+      if (failure.status === 401) {
+        onSessionExpired()
+        return
+      }
+      setStatus('Draft creation could not be confirmed.')
+      setError(failure.status === 419 ? `${failure.message} Log in again to refresh the session.` : failure.message)
+      setValidationErrors(failure.errors || {})
+    } finally {
+      onBusyChange(false)
+    }
+  }
+
+  return (
+    <section aria-labelledby="draft-heading">
+      <h2 id="draft-heading">Create content draft</h2>
+      <form onSubmit={createDraft}>
+        {['title', 'topic', 'tone', 'length'].map((field) => (
+          <div className="draft-field" key={field}>
+            <label htmlFor={`draft-${field}`}>
+              {field.charAt(0).toUpperCase() + field.slice(1)}
+              {['tone', 'length'].includes(field) && ' (optional)'}
+            </label>
+            <input id={`draft-${field}`} name={field} type="text" maxLength={255}
+              required={['title', 'topic'].includes(field)} disabled={busy}
+              value={fields[field]}
+              onChange={(event) => setFields({ ...fields, [field]: event.target.value })}
+              aria-invalid={Boolean(validationErrors[field])}
+              aria-describedby={validationErrors[field] ? `draft-${field}-error` : undefined} />
+            {validationErrors[field] && (
+              <p id={`draft-${field}-error`} role="alert">{validationErrors[field].join(' ')}</p>
+            )}
+          </div>
+        ))}
+        <button type="submit" disabled={busy}>Create draft</button>
+      </form>
+      <p role="status">{status}</p>
+      {error && <p role="alert">{error}</p>}
+      {draft && (
+        <>
+          <h3>Created content</h3>
+          <pre>{JSON.stringify(draft, null, 2)}</pre>
+        </>
+      )}
+    </section>
+  )
 }
 
 function App() {
@@ -132,6 +212,13 @@ function App() {
       <button type="button" onClick={logout} disabled={busy}>Logout</button>
       <p role="status">{status}</p>
       {error && <p role="alert">{error}</p>}
+      {user && (
+        <DraftForm key={user.id} busy={busy} onBusyChange={setBusy}
+          onSessionExpired={() => {
+            setUser(null)
+            setStatus('Session expired. Log in again to create a draft.')
+          }} />
+      )}
     </main>
   )
 }

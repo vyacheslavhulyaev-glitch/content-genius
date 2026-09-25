@@ -4,7 +4,8 @@ main {
   padding: 0 1rem;
 }
 
-form {
+form,
+.draft-field {
   display: grid;
   gap: 0.5rem;
 }
