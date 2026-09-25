@@ -29,10 +29,16 @@ SESSION_SAME_SITE=lax
 
 Use a persistent session driver (the default is `database`) with its existing sessions migration applied.
 Run `php artisan config:clear` after changing local configuration.
-Future frontend requests must include credentials and `Accept: application/json`.
-Initialize cookies with `GET /sanctum/csrf-cookie`, then send the URL-decoded
+The frontend smoke UI uses native fetch with credentials and `Accept: application/json`.
+It initializes cookies with `GET /sanctum/csrf-cookie`, then sends the URL-decoded
 `XSRF-TOKEN` cookie as `X-XSRF-TOKEN` on login/logout POST requests.
-Keep the session cookie HttpOnly. No frontend integration is implemented yet.
+Keep the session cookie HttpOnly.
+
+Open `http://localhost:5173` and log in with an existing local user's credentials.
+Confirm that the UI displays the user returned by `/api/user`; reload to check session persistence.
+Click Logout and confirm the status reports `/api/user` returned 401.
+Invalid credentials should display the backend error. Browser DevTools Network can verify
+the cookie initialization, login, user, logout, and final unauthorized user requests.
 
 ## About Laravel
 
