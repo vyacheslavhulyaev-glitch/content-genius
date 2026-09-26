@@ -7,12 +7,21 @@ use App\Models\Content;
 use App\Models\User;
 use Closure;
 use Exception;
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Psr7\Request;
+use GuzzleHttp\Psr7\Response;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\DB;
+use JsonException;
 use LogicException;
 use OpenAI\Contracts\ClientContract;
 use OpenAI\Contracts\ResponseContract;
 use OpenAI\Contracts\ResponseStreamContract;
+use OpenAI\Exceptions\ErrorException;
+use OpenAI\Exceptions\RateLimitException;
+use OpenAI\Exceptions\ServerException;
+use OpenAI\Exceptions\TransporterException;
+use OpenAI\Exceptions\UnserializableResponse;
 use OpenAI\Responses\Chat\CreateResponse;
 use OpenAI\Testing\ClientFake;
 use OpenAI\Testing\Enums\OverrideStrategy;
@@ -182,7 +191,19 @@ class GenerateContentTest extends TestCase
 
     public static function providerFailures(): array
     {
-        return AIEndpointTest::providerFailures();
+        $sensitiveText = 'Authorization: Bearer sk-test-secret-do-not-expose';
+        $upstream = new Response(500, ['X-Upstream-Secret' => $sensitiveText], $sensitiveText);
+
+        return [
+            'API error' => [new ErrorException(['message' => $sensitiveText], $upstream)],
+            'rate limit' => [new RateLimitException($upstream->withStatus(429))],
+            'server error' => [new ServerException($upstream)],
+            'transport failure' => [new TransporterException(new ConnectException(
+                $sensitiveText,
+                new Request('POST', 'https://api.openai.com/v1/chat/completions'),
+            ))],
+            'unreadable response' => [new UnserializableResponse(new JsonException($sensitiveText), $upstream)],
+        ];
     }
 
     #[DataProvider('unusableResponses')]
@@ -208,7 +229,18 @@ class GenerateContentTest extends TestCase
 
     public static function unusableResponses(): array
     {
-        $cases = AIEndpointTest::missingContentResponses();
+        $choice = [
+            'index' => 0,
+            'message' => ['role' => 'assistant'],
+            'finish_reason' => 'stop',
+        ];
+        $cases = [
+            'no choices' => [[]],
+            'missing content' => [[$choice]],
+            'null content' => [[array_replace($choice, [
+                'message' => ['role' => 'assistant', 'content' => null],
+            ])]],
+        ];
         foreach (['empty' => '', 'whitespace' => " \n\t"] as $name => $text) {
             $cases[$name] = [[['index' => 0, 'message' => ['role' => 'assistant', 'content' => $text]]]];
         }
