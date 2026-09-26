@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
 
 const backendUrl = 'http://localhost:8000'
@@ -40,10 +40,12 @@ async function currentUser() {
   return response.json()
 }
 
-function ContentList({ onSessionExpired }) {
+function ContentList({ onSessionExpired, refreshVersion }) {
   const [contents, setContents] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [generations, setGenerations] = useState({})
+  const pendingGenerations = useRef(new Set())
 
   useEffect(() => {
     let active = true
@@ -53,7 +55,12 @@ function ContentList({ onSessionExpired }) {
         const response = await request('/api/contents')
         await requireSuccess(response)
         const result = await response.json()
-        if (active) setContents(result)
+        if (active) {
+          setContents((current) => result.map((content) => (
+            current.find((item) => item.id === content.id && item.generated_content !== null) || content
+          )))
+          setError('')
+        }
       } catch (failure) {
         if (!active) return
         if (failure.status === 401) {
@@ -68,7 +75,38 @@ function ContentList({ onSessionExpired }) {
 
     loadContents()
     return () => { active = false }
-  }, [onSessionExpired])
+  }, [onSessionExpired, refreshVersion])
+
+  async function generateContent(content) {
+    if (content.generated_content !== null || pendingGenerations.current.has(content.id)) return
+
+    pendingGenerations.current.add(content.id)
+    setGenerations((current) => ({ ...current, [content.id]: { pending: true, error: '' } }))
+
+    try {
+      const response = await request(`/api/contents/${content.id}/generate`, {
+        method: 'POST',
+        headers: { 'X-XSRF-TOKEN': csrfToken() },
+      })
+      await requireSuccess(response)
+      const result = await response.json()
+      setContents((current) => current.map((item) => item.id === content.id ? result.content : item))
+      setGenerations((current) => ({ ...current, [content.id]: { pending: false, error: '' } }))
+    } catch (failure) {
+      if (failure.status === 401) {
+        onSessionExpired()
+        return
+      }
+      const message = failure.status === 409
+        ? 'This content is already generated or generation is pending.'
+        : failure.status === 503
+          ? 'The AI service is currently unavailable.'
+          : 'Could not complete the generation request.'
+      setGenerations((current) => ({ ...current, [content.id]: { pending: false, error: message } }))
+    } finally {
+      pendingGenerations.current.delete(content.id)
+    }
+  }
 
   return (
     <section aria-labelledby="contents-heading">
@@ -84,6 +122,19 @@ function ContentList({ onSessionExpired }) {
             <p>Tone: {content.tone || 'Not specified'}</p>
             <p>Length: {content.length || 'Not specified'}</p>
             <p>Created at: <time dateTime={content.created_at}>{content.created_at}</time></p>
+            {content.generated_content !== null ? (
+              <div>
+                <h4>Generated content</h4>
+                <p className="generated-content">{content.generated_content}</p>
+              </div>
+            ) : (
+              <button type="button" disabled={generations[content.id]?.pending}
+                onClick={() => generateContent(content)}>
+                {generations[content.id]?.pending ? 'Generating...' : 'Generate'}
+              </button>
+            )}
+            {generations[content.id]?.pending && <p role="status">Generating content...</p>}
+            {generations[content.id]?.error && <p role="alert">{generations[content.id].error}</p>}
           </li>
         ))}
       </ul>
@@ -166,7 +217,7 @@ function DraftForm({ busy, onBusyChange, onSessionExpired }) {
           <pre>{JSON.stringify(draft, null, 2)}</pre>
         </>
       )}
-      <ContentList key={listVersion} onSessionExpired={onSessionExpired} />
+      <ContentList refreshVersion={listVersion} onSessionExpired={onSessionExpired} />
     </section>
   )
 }
