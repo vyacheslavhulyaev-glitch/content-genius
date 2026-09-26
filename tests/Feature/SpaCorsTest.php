@@ -93,6 +93,9 @@ class SpaCorsTest extends TestCase
             'create content' => ['/api/contents', 'POST'],
             'list contents' => ['/api/contents', 'GET'],
             'generate content' => ['/api/contents/123/generate', 'POST'],
+            'regenerate content' => ['/api/contents/123/regenerate', 'POST'],
+            'edit content' => ['/api/contents/123', 'PATCH'],
+            'delete content' => ['/api/contents/123', 'DELETE'],
         ];
     }
 }

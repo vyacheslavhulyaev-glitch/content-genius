@@ -257,6 +257,38 @@ form button {
   padding-top: 1.25rem;
 }
 
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .65rem;
+  margin-bottom: 1.25rem;
+}
+
+.inline-edit {
+  border-top: 1px solid #e0e5ed;
+  padding-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.stale-notice {
+  background: #fff3da;
+  color: #725010;
+  border-left: 3px solid #ad7919;
+  border-radius: 6px;
+  padding: .85rem;
+  font-size: .875rem;
+}
+
+.danger {
+  background: #fff;
+  border-color: #dcb9b6;
+  color: #a32321;
+}
+
+.danger:hover:not(:disabled) {
+  background: #fff1f0;
+}
+
 .generated-preview h4 {
   color: #554ea5;
 }

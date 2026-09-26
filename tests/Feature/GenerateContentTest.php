@@ -131,6 +131,8 @@ class GenerateContentTest extends TestCase
             'ai_request' => ['id' => $aiRequest->id, 'status' => 'completed', 'tokens_used' => 30, 'cost' => null],
         ]);
         $this->assertSame('Generated text', $content->generated_content);
+        $this->assertSame($content->generationInputs()->fingerprint(), $content->generation_fingerprint);
+        $response->assertJsonPath('content.is_generation_stale', false)->assertJsonMissingPath('content.generation_fingerprint');
         foreach (['user_id', 'title', 'topic', 'tone', 'length', 'metadata', 'created_at'] as $field) {
             $this->assertSame($original[$field], $content->toArray()[$field]);
         }

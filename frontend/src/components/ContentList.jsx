@@ -6,16 +6,18 @@ export default function ContentList({ onSessionExpired, refreshVersion }) {
   const [contents, setContents] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [generations, setGenerations] = useState({})
+  const [actions, setActions] = useState({})
   const mounted = useRef(false)
   useEffect(() => {
     mounted.current = true
     return () => { mounted.current = false }
   }, [])
-  const pendingGenerations = useRef(new Set())
+  const pendingActions = useRef(new Set())
+  const revisions = useRef(new Map())
 
   useEffect(() => {
     let active = true
+    const startedRevisions = new Map(revisions.current)
 
     async function loadContents() {
       try {
@@ -24,8 +26,10 @@ export default function ContentList({ onSessionExpired, refreshVersion }) {
         const result = await response.json()
         if (active) {
           setContents((current) => result.map((content) => (
-            current.find((item) => item.id === content.id && item.generated_content !== null) || content
-          )))
+            (revisions.current.get(content.id) ?? 0) !== (startedRevisions.get(content.id) ?? 0)
+              ? current.find((item) => item.id === content.id)
+              : content
+          )).filter(Boolean))
           setError('')
         }
       } catch (failure) {
@@ -44,36 +48,47 @@ export default function ContentList({ onSessionExpired, refreshVersion }) {
     return () => { active = false }
   }, [onSessionExpired, refreshVersion])
 
-  async function generateContent(content) {
-    if (content.generated_content !== null || pendingGenerations.current.has(content.id)) return
+  async function mutateContent(content, operation, fields) {
+    if (pendingActions.current.has(content.id)) return false
+    if (operation === 'delete' && !window.confirm(`Delete "${content.title}"? This cannot be undone.`)) return false
 
-    pendingGenerations.current.add(content.id)
-    setGenerations((current) => ({ ...current, [content.id]: { pending: true, error: '' } }))
-
+    pendingActions.current.add(content.id)
+    setActions((current) => ({ ...current, [content.id]: { pending: operation, error: '', errors: {} } }))
     try {
-      const response = await request(`/api/contents/${content.id}/generate`, {
-        method: 'POST',
-        headers: { 'X-XSRF-TOKEN': csrfToken() },
+      const generation = operation === 'generate' || operation === 'regenerate'
+      const response = await request(`/api/contents/${content.id}${generation ? `/${operation}` : ''}`, {
+        method: generation ? 'POST' : operation === 'edit' ? 'PATCH' : 'DELETE',
+        headers: { 'X-XSRF-TOKEN': csrfToken(), ...(operation === 'edit' ? { 'Content-Type': 'application/json' } : {}) },
+        ...(operation === 'edit' ? { body: JSON.stringify(fields) } : {}),
       })
       await requireSuccess(response)
-      const result = await response.json()
-      if (!mounted.current) return
-      setContents((current) => current.map((item) => item.id === content.id ? result.content : item))
-      setGenerations((current) => ({ ...current, [content.id]: { pending: false, error: '' } }))
+      const result = operation === 'delete' ? null : await response.json()
+      if (!mounted.current) return false
+      revisions.current.set(content.id, (revisions.current.get(content.id) ?? 0) + 1)
+      setContents((current) => operation === 'delete'
+        ? current.filter((item) => item.id !== content.id)
+        : current.map((item) => item.id === content.id ? (generation ? result.content : result) : item))
+      setActions((current) => ({ ...current, [content.id]: { pending: false, error: '', errors: {} } }))
+      return true
     } catch (failure) {
-      if (!mounted.current) return
+      if (!mounted.current) return false
       if (failure.status === 401) {
         onSessionExpired()
-        return
+        return false
       }
       const message = failure.status === 409
-        ? 'This content is already generated or generation is pending.'
+        ? 'This action conflicts with the current content state, or generation is already pending. Reload to check the latest state.'
         : failure.status === 503
-          ? 'The AI service is currently unavailable.'
-          : 'Could not complete the generation request.'
-      setGenerations((current) => ({ ...current, [content.id]: { pending: false, error: message } }))
+          ? 'The AI service is currently unavailable. Your existing text has been kept.'
+          : failure.status === 422 && operation === 'edit'
+            ? 'Please check the highlighted fields.'
+            : 'Could not complete the request. Please try again.'
+      setActions((current) => ({ ...current, [content.id]: {
+        pending: false, error: message, errors: operation === 'edit' ? failure.errors || {} : {},
+      } }))
+      return false
     } finally {
-      pendingGenerations.current.delete(content.id)
+      pendingActions.current.delete(content.id)
     }
   }
 
@@ -86,8 +101,11 @@ export default function ContentList({ onSessionExpired, refreshVersion }) {
       <ul className="content-list">
         {contents.map((content) => (
           <li key={content.id}>
-            <ContentCard content={content} generation={generations[content.id]}
-              onGenerate={() => generateContent(content)} />
+            <ContentCard content={content} action={actions[content.id]}
+              onGenerate={() => mutateContent(content, content.generated_content === null ? 'generate' : 'regenerate')}
+              onSave={(fields) => mutateContent(content, 'edit', fields)}
+              onDelete={() => mutateContent(content, 'delete')}
+              onClearError={() => setActions((current) => ({ ...current, [content.id]: { pending: false, error: '', errors: {} } }))} />
           </li>
         ))}
       </ul>
