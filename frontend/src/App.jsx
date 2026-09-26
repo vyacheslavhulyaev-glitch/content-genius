@@ -1,237 +1,22 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { request, requireSuccess, csrfToken, currentUser } from './lib/api'
+import AppHeader from './components/AppHeader'
+import LoginForm from './components/LoginForm'
+import DashboardPage from './pages/DashboardPage'
+import AdminPage from './pages/AdminPage'
 import './App.css'
 
-const backendUrl = 'http://localhost:8000'
-
-async function request(path, options = {}) {
-  try {
-    return await fetch(`${backendUrl}${path}`, {
-      ...options,
-      credentials: 'include',
-      headers: { Accept: 'application/json', ...options.headers },
-    })
-  } catch {
-    throw new Error(`${path}: Network request failed. Check Laravel and CORS settings.`)
-  }
-}
-
-async function requireSuccess(response) {
-  if (!response.ok) {
-    const body = await response.json().catch(() => null)
-    const failure = new Error(`HTTP ${response.status}: ${body?.message || response.statusText || 'Request failed'}`)
-    failure.status = response.status
-    failure.errors = body?.errors || {}
-    throw failure
-  }
-}
-
-function csrfToken() {
-  const cookie = document.cookie.split('; ').find((value) => value.startsWith('XSRF-TOKEN='))
-  if (!cookie) {
-    throw new Error('XSRF-TOKEN cookie is missing. Check cookie settings and use localhost for both servers.')
-  }
-  return decodeURIComponent(cookie.slice('XSRF-TOKEN='.length))
-}
-
-async function currentUser() {
-  const response = await request('/api/user')
-  if (response.status === 401) return null
-  await requireSuccess(response)
-  return response.json()
-}
-
-function ContentList({ onSessionExpired, refreshVersion }) {
-  const [contents, setContents] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [generations, setGenerations] = useState({})
-  const pendingGenerations = useRef(new Set())
-
-  useEffect(() => {
-    let active = true
-
-    async function loadContents() {
-      try {
-        const response = await request('/api/contents')
-        await requireSuccess(response)
-        const result = await response.json()
-        if (active) {
-          setContents((current) => result.map((content) => (
-            current.find((item) => item.id === content.id && item.generated_content !== null) || content
-          )))
-          setError('')
-        }
-      } catch (failure) {
-        if (!active) return
-        if (failure.status === 401) {
-          onSessionExpired()
-          return
-        }
-        setError(`Could not load drafts. ${failure.message} Reload the page to retry.`)
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-
-    loadContents()
-    return () => { active = false }
-  }, [onSessionExpired, refreshVersion])
-
-  async function generateContent(content) {
-    if (content.generated_content !== null || pendingGenerations.current.has(content.id)) return
-
-    pendingGenerations.current.add(content.id)
-    setGenerations((current) => ({ ...current, [content.id]: { pending: true, error: '' } }))
-
-    try {
-      const response = await request(`/api/contents/${content.id}/generate`, {
-        method: 'POST',
-        headers: { 'X-XSRF-TOKEN': csrfToken() },
-      })
-      await requireSuccess(response)
-      const result = await response.json()
-      setContents((current) => current.map((item) => item.id === content.id ? result.content : item))
-      setGenerations((current) => ({ ...current, [content.id]: { pending: false, error: '' } }))
-    } catch (failure) {
-      if (failure.status === 401) {
-        onSessionExpired()
-        return
-      }
-      const message = failure.status === 409
-        ? 'This content is already generated or generation is pending.'
-        : failure.status === 503
-          ? 'The AI service is currently unavailable.'
-          : 'Could not complete the generation request.'
-      setGenerations((current) => ({ ...current, [content.id]: { pending: false, error: message } }))
-    } finally {
-      pendingGenerations.current.delete(content.id)
-    }
-  }
-
-  return (
-    <section aria-labelledby="contents-heading">
-      <h2 id="contents-heading">Your content drafts</h2>
-      {loading && <p role="status">Loading drafts...</p>}
-      {error && <p role="alert">{error}</p>}
-      {!loading && !error && contents.length === 0 && <p>No drafts yet.</p>}
-      <ul>
-        {contents.map((content) => (
-          <li key={content.id}>
-            <h3>{content.title}</h3>
-            <p>Topic: {content.topic}</p>
-            <p>Tone: {content.tone || 'Not specified'}</p>
-            <p>Length: {content.length || 'Not specified'}</p>
-            <p>Created at: <time dateTime={content.created_at}>{content.created_at}</time></p>
-            {content.generated_content !== null ? (
-              <div>
-                <h4>Generated content</h4>
-                <p className="generated-content">{content.generated_content}</p>
-              </div>
-            ) : (
-              <button type="button" disabled={generations[content.id]?.pending}
-                onClick={() => generateContent(content)}>
-                {generations[content.id]?.pending ? 'Generating...' : 'Generate'}
-              </button>
-            )}
-            {generations[content.id]?.pending && <p role="status">Generating content...</p>}
-            {generations[content.id]?.error && <p role="alert">{generations[content.id].error}</p>}
-          </li>
-        ))}
-      </ul>
-    </section>
-  )
-}
-
-function DraftForm({ busy, onBusyChange, onSessionExpired }) {
-  const [fields, setFields] = useState({ title: '', topic: '', tone: '', length: '' })
-  const [draft, setDraft] = useState(null)
-  const [status, setStatus] = useState('')
-  const [error, setError] = useState('')
-  const [validationErrors, setValidationErrors] = useState({})
-  const [listVersion, setListVersion] = useState(0)
-
-  async function createDraft(event) {
-    event.preventDefault()
-    onBusyChange(true)
-    setDraft(null)
-    setError('')
-    setValidationErrors({})
-    setStatus('Creating draft...')
-
-    const payload = { title: fields.title.trim(), topic: fields.topic.trim() }
-    for (const field of ['tone', 'length']) {
-      if (fields[field].trim()) payload[field] = fields[field].trim()
-    }
-
-    try {
-      const response = await request('/api/contents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': csrfToken() },
-        body: JSON.stringify(payload),
-      })
-      await requireSuccess(response)
-      setDraft(await response.json())
-      setListVersion((version) => version + 1)
-      setStatus('Draft created successfully.')
-    } catch (failure) {
-      if (failure.status === 401) {
-        onSessionExpired()
-        return
-      }
-      setStatus('Draft creation could not be confirmed.')
-      setError(failure.status === 419 ? `${failure.message} Log in again to refresh the session.` : failure.message)
-      setValidationErrors(failure.errors || {})
-    } finally {
-      onBusyChange(false)
-    }
-  }
-
-  return (
-    <section aria-labelledby="draft-heading">
-      <h2 id="draft-heading">Create content draft</h2>
-      <form onSubmit={createDraft}>
-        {['title', 'topic', 'tone', 'length'].map((field) => (
-          <div className="draft-field" key={field}>
-            <label htmlFor={`draft-${field}`}>
-              {field.charAt(0).toUpperCase() + field.slice(1)}
-              {['tone', 'length'].includes(field) && ' (optional)'}
-            </label>
-            <input id={`draft-${field}`} name={field} type="text" maxLength={255}
-              required={['title', 'topic'].includes(field)} disabled={busy}
-              value={fields[field]}
-              onChange={(event) => setFields({ ...fields, [field]: event.target.value })}
-              aria-invalid={Boolean(validationErrors[field])}
-              aria-describedby={validationErrors[field] ? `draft-${field}-error` : undefined} />
-            {validationErrors[field] && (
-              <p id={`draft-${field}-error`} role="alert">{validationErrors[field].join(' ')}</p>
-            )}
-          </div>
-        ))}
-        <button type="submit" disabled={busy}>Create draft</button>
-      </form>
-      <p role="status">{status}</p>
-      {error && <p role="alert">{error}</p>}
-      {draft && (
-        <>
-          <h3>Created content</h3>
-          <pre>{JSON.stringify(draft, null, 2)}</pre>
-        </>
-      )}
-      <ContentList refreshVersion={listVersion} onSessionExpired={onSessionExpired} />
-    </section>
-  )
-}
-
-function App() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+export default function App() {
   const [user, setUser] = useState(undefined)
   const [busy, setBusy] = useState(true)
-  const [status, setStatus] = useState('Checking session…')
+  const [page, setPage] = useState('dashboard')
+  const [status, setStatus] = useState('Checking your session...')
   const [error, setError] = useState('')
 
   const handleSessionExpired = useCallback(() => {
     setUser(null)
+    setPage('dashboard')
+    setError('')
     setStatus('Session expired. Log in again to access your drafts.')
   }, [])
 
@@ -241,42 +26,38 @@ function App() {
       .then((authenticatedUser) => {
         if (!active) return
         setUser(authenticatedUser)
-        setStatus(authenticatedUser ? 'Authenticated: /api/user returned 200.' : 'Not authenticated: /api/user returned 401.')
+        setStatus('')
       })
-      .catch((failure) => {
+      .catch(() => {
         if (!active) return
-        setStatus('Session check failed.')
-        setError(failure.message)
+        setStatus('')
+        setError('Could not check your session. Please log in again.')
       })
-      .finally(() => {
-        if (active) setBusy(false)
-      })
+      .finally(() => { if (active) setBusy(false) })
     return () => { active = false }
   }, [])
 
-  async function login(event) {
-    event.preventDefault()
+  async function login(email, password) {
     setBusy(true)
     setError('')
-    setUser(undefined)
-    setStatus('Initializing CSRF cookie…')
+    setStatus('Signing in...')
     try {
       await requireSuccess(await request('/sanctum/csrf-cookie'))
-      setStatus('Logging in…')
       await requireSuccess(await request('/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': csrfToken() },
         body: JSON.stringify({ email, password }),
       }))
-      setPassword('')
-      setStatus('Checking authenticated user…')
       const authenticatedUser = await currentUser()
+      if (!authenticatedUser) throw new Error('Session not confirmed')
+      setPage('dashboard')
       setUser(authenticatedUser)
-      if (!authenticatedUser) throw new Error('Login returned success, but /api/user returned 401.')
-      setStatus('Login confirmed: /api/user returned 200.')
+      setStatus('')
     } catch (failure) {
-      setStatus('Login could not be confirmed.')
-      setError(failure.message)
+      setStatus('')
+      setError(failure.status === 422 ? 'The email or password is incorrect.'
+        : failure.status === 429 ? 'Too many login attempts. Please wait a minute.'
+          : 'Could not sign in. Please try again.')
     } finally {
       setBusy(false)
     }
@@ -285,49 +66,45 @@ function App() {
   async function logout() {
     setBusy(true)
     setError('')
-    setStatus('Logging out…')
+    setStatus('Signing out...')
     try {
       await requireSuccess(await request('/logout', {
-        method: 'POST',
-        headers: { 'X-XSRF-TOKEN': csrfToken() },
+        method: 'POST', headers: { 'X-XSRF-TOKEN': csrfToken() },
       }))
       setUser(undefined)
-      setStatus('Checking that the session ended…')
+      setPage('dashboard')
       const authenticatedUser = await currentUser()
       setUser(authenticatedUser)
-      if (authenticatedUser) throw new Error('Logout returned success, but /api/user is still authenticated.')
-      setStatus('Logout confirmed: /api/user returned 401.')
+      if (authenticatedUser) throw new Error('Session still active')
+      setStatus('You have been signed out.')
     } catch (failure) {
-      setStatus('Logout could not be confirmed.')
-      setError(failure.message)
+      if (failure.status === 401) {
+        handleSessionExpired()
+      } else {
+        setStatus('')
+        setError('Could not confirm sign out. Please try again.')
+      }
     } finally {
       setBusy(false)
     }
   }
 
+  if (!user) return <LoginForm busy={busy} status={status} error={error} onLogin={login} />
+
   return (
-    <main>
-      <h1>Session authentication smoke test</h1>
-      <form onSubmit={login}>
-        <label htmlFor="email">Email</label>
-        <input id="email" name="email" type="email" autoComplete="username" required
-          value={email} onChange={(event) => setEmail(event.target.value)} disabled={busy} />
-        <label htmlFor="password">Password</label>
-        <input id="password" name="password" type="password" autoComplete="current-password" required
-          value={password} onChange={(event) => setPassword(event.target.value)} disabled={busy} />
-        <button type="submit" disabled={busy}>Login</button>
-      </form>
-      <h2>Current user</h2>
-      {user ? <pre>{JSON.stringify(user, null, 2)}</pre> : <p>{user === null ? 'Not authenticated.' : 'Session not verified.'}</p>}
-      <button type="button" onClick={logout} disabled={busy}>Logout</button>
-      <p role="status">{status}</p>
-      {error && <p role="alert">{error}</p>}
-      {user && (
-        <DraftForm key={user.id} busy={busy} onBusyChange={setBusy}
-          onSessionExpired={handleSessionExpired} />
-      )}
-    </main>
+    <>
+      <a className="skip-link" href="#main-content">Skip to content</a>
+      <AppHeader user={user} page={page} onNavigate={setPage} onLogout={logout} busy={busy} />
+      <main id="main-content" className="workspace">
+        {status && <p role="status">{status}</p>}
+        {error && <p role="alert">{error}</p>}
+        <div hidden={page !== 'dashboard'}>
+          <DashboardPage key={user.id} onSessionExpired={handleSessionExpired} />
+        </div>
+        {page === 'admin' && user.is_admin === true && (
+          <AdminPage key={user.id} onSessionExpired={handleSessionExpired} />
+        )}
+      </main>
+    </>
   )
 }
-
-export default App
