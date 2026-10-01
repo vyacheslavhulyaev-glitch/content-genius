@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\ContentController;
+use App\Http\Controllers\ContentTranslationController;
 use App\Http\Controllers\GenerateContentController;
 use App\Http\Controllers\RegenerateContentController;
 use Illuminate\Http\Request;
@@ -19,6 +20,7 @@ Route::get('/contents', [ContentController::class, 'index'])->middleware('auth:s
 Route::get('/admin/dashboard', AdminDashboardController::class)
     ->middleware(['auth:sanctum', 'can:view-admin-dashboard']);
 Route::post('/contents', [ContentController::class, 'store'])->middleware('auth:sanctum');
+Route::post('/contents/{content}/translations', ContentTranslationController::class)->middleware('auth:sanctum');
 Route::post('/contents/{content}/generate', GenerateContentController::class)->middleware('auth:sanctum');
 Route::patch('/contents/{content}', [ContentController::class, 'update'])->middleware('auth:sanctum');
 Route::delete('/contents/{content}', [ContentController::class, 'destroy'])->middleware('auth:sanctum');

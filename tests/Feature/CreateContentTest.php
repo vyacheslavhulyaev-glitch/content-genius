@@ -32,6 +32,7 @@ class CreateContentTest extends TestCase
             ->assertJsonPath('topic', 'Laravel')
             ->assertJsonPath('tone', null)
             ->assertJsonPath('length', null)
+            ->assertJsonPath('content_language', 'en')
             ->assertJsonPath('metadata', null)
             ->assertJsonPath('generated_content', null)
             ->assertJsonStructure(['id', 'created_at', 'updated_at']);

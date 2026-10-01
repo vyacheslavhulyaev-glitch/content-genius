@@ -15,7 +15,7 @@ class ManageContentTest extends TestCase
 
     private function content(User $user): Content
     {
-        $content = $user->contents()->create([
+        $content = Content::factory()->for($user)->create([
             'title' => 'Title', 'topic' => 'Topic', 'tone' => 'Professional', 'length' => 'Short',
             'generated_content' => 'Original text', 'metadata' => ['private' => 'value'],
         ]);
@@ -91,9 +91,10 @@ class ManageContentTest extends TestCase
     public function test_partial_empty_patch_and_optional_normalization(): void
     {
         $user = User::factory()->create();
-        $content = $user->contents()->create(['title' => 'Title', 'topic' => 'Topic'])->refresh();
+        $content = Content::factory()->for($user)->create(['title' => 'Title', 'topic' => 'Topic'])->refresh();
         $this->actingAs($user, 'web')->patchJson("/api/contents/{$content->id}", [])
-            ->assertOk()->assertExactJson($content->toArray());
+            ->assertOk()->assertExactJson([...$content->toArray(), 'primary_language' => 'en',
+                'translations' => [['id' => $content->id, 'content_language' => 'en', 'has_generated_content' => false, 'is_generation_stale' => false]]]);
         $this->patchJson("/api/contents/{$content->id}", ['tone' => ' ', 'length' => null])
             ->assertOk()->assertJsonPath('tone', null)->assertJsonPath('length', null)
             ->assertJsonPath('is_generation_stale', false);
@@ -147,8 +148,8 @@ class ManageContentTest extends TestCase
     {
         $user = User::factory()->create();
         $generated = $this->content($user);
-        $empty = $user->contents()->create(['title' => 'Unicode title é', 'topic' => 'Topic', 'tone' => '', 'generated_content' => '']);
-        $draft = $user->contents()->create(['title' => 'Draft', 'topic' => 'Topic']);
+        $empty = Content::factory()->for($user)->create(['title' => 'Unicode title é', 'topic' => 'Topic', 'tone' => '', 'generated_content' => '']);
+        $draft = Content::factory()->for($user)->create(['title' => 'Draft', 'topic' => 'Topic']);
         $expected = [$generated->id => $generated->generationInputs()->fingerprint(), $empty->id => $empty->generationInputs()->fingerprint()];
         $migration = require database_path('migrations/2026_09_26_000001_add_generation_fingerprint_to_contents_table.php');
         $migration->down();

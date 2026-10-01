@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Enums\ContentLanguage;
+
 final readonly class GenerationInputs
 {
     public string $title;
@@ -12,7 +14,7 @@ final readonly class GenerationInputs
 
     public string $length;
 
-    public function __construct(?string $title, ?string $topic, ?string $tone, ?string $length)
+    public function __construct(?string $title, ?string $topic, ?string $tone, ?string $length, public ContentLanguage $contentLanguage = ContentLanguage::English)
     {
         $this->title = trim($title ?? '');
         $this->topic = trim($topic ?? '');
@@ -22,7 +24,19 @@ final readonly class GenerationInputs
 
     public function fingerprint(): string
     {
-        return hash('sha256', json_encode([$this->title, $this->topic, $this->tone, $this->length], JSON_THROW_ON_ERROR));
+        $inputs = [$this->title, $this->topic, $this->tone, $this->length];
+
+        // English is the legacy default: preserve existing fingerprints and staleness.
+        if ($this->contentLanguage !== ContentLanguage::English) {
+            $inputs[] = $this->contentLanguage->value;
+        }
+
+        return hash('sha256', json_encode($inputs, JSON_THROW_ON_ERROR));
+    }
+
+    public function languageInstruction(): string
+    {
+        return "The generated content must be written in {$this->contentLanguage->label()}.";
     }
 
     public function prompt(): string

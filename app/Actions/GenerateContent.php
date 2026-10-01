@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use App\Http\Resources\ContentResource;
 use App\Models\AIRequest;
 use App\Models\Content;
 use App\Models\User;
@@ -54,7 +55,7 @@ class GenerateContent
             $response = $client->chat()->create([
                 'model' => config('services.openai.model'),
                 'messages' => [
-                    ['role' => 'system', 'content' => 'Write content using the supplied draft details. Return only the generated text.'],
+                    ['role' => 'system', 'content' => 'Write content using the supplied draft details. Return only the generated text. '.$inputs->languageInstruction()],
                     ['role' => 'user', 'content' => $inputs->prompt()],
                 ],
             ]);
@@ -90,7 +91,7 @@ class GenerateContent
                     'error_message' => null,
                 ]);
 
-                return $content;
+                return $content->load(Content::GROUP_RELATIONS);
             });
         } catch (QueryException) {
             $this->markFailed($aiRequest, 'Failed to persist generation', $tokensUsed);
@@ -106,7 +107,7 @@ class GenerateContent
         }
 
         return response()->json([
-            'content' => $content,
+            'content' => new ContentResource($content),
             'ai_request' => $aiRequest->only(['id', 'status', 'tokens_used', 'cost']),
         ]);
     }

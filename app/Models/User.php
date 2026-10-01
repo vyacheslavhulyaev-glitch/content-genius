@@ -53,6 +53,11 @@ class User extends Authenticatable
         return $this->hasMany(Content::class);
     }
 
+    public function contentGroups()
+    {
+        return $this->hasMany(ContentGroup::class);
+    }
+
     public function aiRequests()
     {
         return $this->hasMany(AIRequest::class);

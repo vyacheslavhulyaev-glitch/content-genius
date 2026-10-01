@@ -1,8 +1,12 @@
+import { useTranslation } from 'react-i18next'
 import { useEffect, useRef, useState } from 'react'
 import { request, requireSuccess, csrfToken } from '../lib/api'
+import ContentLanguageSelect from './ContentLanguageSelect'
+import { validationMessage } from '../lib/validation'
 
 export default function DraftForm({ onCreated, onSessionExpired }) {
-  const [fields, setFields] = useState({ title: '', topic: '', tone: '', length: '' })
+  const { t } = useTranslation()
+  const [fields, setFields] = useState({ title: '', topic: '', tone: '', length: '', content_language: 'en' })
   const [busy, setBusy] = useState(false)
   const pending = useRef(false)
   const mounted = useRef(false)
@@ -23,7 +27,7 @@ export default function DraftForm({ onCreated, onSessionExpired }) {
     setValidationErrors({})
     setStatus('Creating draft...')
 
-    const payload = { title: fields.title.trim(), topic: fields.topic.trim() }
+    const payload = { title: fields.title.trim(), topic: fields.topic.trim(), content_language: fields.content_language }
     for (const field of ['tone', 'length']) {
       if (fields[field].trim()) payload[field] = fields[field].trim()
     }
@@ -56,30 +60,34 @@ export default function DraftForm({ onCreated, onSessionExpired }) {
 
   return (
     <section className="panel draft-panel" aria-labelledby="draft-heading">
-      <h2 id="draft-heading">Create a draft</h2>
-      <p className="muted">Give your idea a little direction.</p>
+      <h2 id="draft-heading">{t('Create a draft')}</h2>
+      <p className="muted">{t('Give your idea a little direction.')}</p>
       <form onSubmit={createDraft}>
         {['title', 'topic', 'tone', 'length'].map((field) => (
           <div className="draft-field" key={field}>
             <label htmlFor={`draft-${field}`}>
-              {field.charAt(0).toUpperCase() + field.slice(1)}
-              {['tone', 'length'].includes(field) && ' (optional)'}
+              {t(field.charAt(0).toUpperCase() + field.slice(1))}
+              {['tone', 'length'].includes(field) && t(' (optional)')}
             </label>
             <input id={`draft-${field}`} name={field} type="text" maxLength={255}
+              translate="no" className="notranslate"
               required={['title', 'topic'].includes(field)} disabled={busy}
               value={fields[field]}
               onChange={(event) => setFields({ ...fields, [field]: event.target.value })}
               aria-invalid={Boolean(validationErrors[field])}
               aria-describedby={validationErrors[field] ? `draft-${field}-error` : undefined} />
             {validationErrors[field] && (
-              <p id={`draft-${field}-error`} role="alert">{validationErrors[field].join(' ')}</p>
+              <p id={`draft-${field}-error`} role="alert">{validationMessage(validationErrors[field], t)}</p>
             )}
           </div>
         ))}
-        <button className="primary" type="submit" disabled={busy}>{busy ? 'Creating...' : 'Create draft'}</button>
+        <ContentLanguageSelect id="draft-content-language" value={fields.content_language} disabled={busy}
+          onChange={(event) => setFields({ ...fields, content_language: event.target.value })}
+          errors={validationErrors.content_language} />
+        <button className="primary" type="submit" disabled={busy}>{busy ? t('Creating...') : t('Create draft')}</button>
       </form>
-      <p role="status">{status}</p>
-      {error && <p role="alert">{error}</p>}
+      <p role="status">{status && t(status)}</p>
+      {error && <p role="alert">{t(error)}</p>}
     </section>
   )
 }

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useCallback, useEffect, useState } from 'react'
 import { request, requireSuccess, csrfToken, currentUser } from './lib/api'
 import AppHeader from './components/AppHeader'
@@ -7,6 +8,7 @@ import AdminPage from './pages/AdminPage'
 import './App.css'
 
 export default function App() {
+  const { t } = useTranslation()
   const [user, setUser] = useState(undefined)
   const [busy, setBusy] = useState(true)
   const [page, setPage] = useState('dashboard')
@@ -93,11 +95,11 @@ export default function App() {
 
   return (
     <>
-      <a className="skip-link" href="#main-content">Skip to content</a>
+      <a className="skip-link" href="#main-content">{t('Skip to content')}</a>
       <AppHeader user={user} page={page} onNavigate={setPage} onLogout={logout} busy={busy} />
       <main id="main-content" className="workspace">
-        {status && <p role="status">{status}</p>}
-        {error && <p role="alert">{error}</p>}
+        {status && <p role="status">{t(status)}</p>}
+        {error && <p role="alert">{t(error)}</p>}
         <div hidden={page !== 'dashboard'}>
           <DashboardPage key={user.id} onSessionExpired={handleSessionExpired} />
         </div>

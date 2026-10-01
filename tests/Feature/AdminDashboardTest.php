@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Content;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
@@ -77,12 +78,12 @@ class AdminDashboardTest extends TestCase
     {
         $admin = User::factory()->admin()->create();
         $user = User::factory()->create();
-        $generated = $user->contents()->create([
+        $generated = Content::factory()->for($user)->create([
             'title' => 'Generated', 'topic' => 'Private topic', 'generated_content' => 'Private result',
             'metadata' => ['secret' => 'Private metadata'],
         ]);
-        $admin->contents()->create(['title' => 'Empty generated', 'topic' => 'Topic', 'generated_content' => '']);
-        $draft = $admin->contents()->create(['title' => 'Draft', 'topic' => 'Topic']);
+        Content::factory()->for($admin)->create(['title' => 'Empty generated', 'topic' => 'Topic', 'generated_content' => '']);
+        $draft = Content::factory()->for($admin)->create(['title' => 'Draft', 'topic' => 'Topic']);
         $completed = $user->aiRequests()->create([
             'content_id' => $generated->id, 'status' => 'completed', 'tokens_used' => 30, 'cost' => 1,
         ]);
@@ -154,7 +155,7 @@ class AdminDashboardTest extends TestCase
     public function test_admin_cannot_access_another_users_content_through_normal_endpoints(): void
     {
         $admin = User::factory()->admin()->create();
-        $content = User::factory()->create()->contents()->create(['title' => 'Private', 'topic' => 'Topic']);
+        $content = Content::factory()->create(['title' => 'Private', 'topic' => 'Topic']);
         $client = new ClientFake([]);
         $this->app->instance(ClientContract::class, $client);
 

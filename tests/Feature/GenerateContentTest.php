@@ -38,7 +38,7 @@ class GenerateContentTest extends TestCase
 
     private function draft(User $user): Content
     {
-        return $user->contents()->create([
+        return Content::factory()->for($user)->create([
             'title' => 'Stored title',
             'topic' => 'Stored topic',
             'tone' => 'Friendly',
@@ -127,7 +127,8 @@ class GenerateContentTest extends TestCase
         $aiRequest = AIRequest::sole();
         $content->refresh();
         $response->assertExactJson([
-            'content' => $content->toArray(),
+            'content' => [...$content->toArray(), 'primary_language' => 'en',
+                'translations' => [['id' => $content->id, 'content_language' => 'en', 'has_generated_content' => true, 'is_generation_stale' => false]]],
             'ai_request' => ['id' => $aiRequest->id, 'status' => 'completed', 'tokens_used' => 30, 'cost' => null],
         ]);
         $this->assertSame('Generated text', $content->generated_content);
@@ -147,7 +148,7 @@ class GenerateContentTest extends TestCase
             && $parameters === [
                 'model' => 'test-generation-model',
                 'messages' => [
-                    ['role' => 'system', 'content' => 'Write content using the supplied draft details. Return only the generated text.'],
+                    ['role' => 'system', 'content' => 'Write content using the supplied draft details. Return only the generated text. The generated content must be written in English.'],
                     ['role' => 'user', 'content' => "Title: Stored title\nTopic: Stored topic\nTone: Friendly\nLength: Short"],
                 ],
             ]);
@@ -156,7 +157,7 @@ class GenerateContentTest extends TestCase
     public function test_missing_usage_and_optional_fields_allow_generation_with_an_empty_body(): void
     {
         $user = User::factory()->create();
-        $content = $user->contents()->create(['title' => 'Draft', 'topic' => 'Topic']);
+        $content = Content::factory()->for($user)->create(['title' => 'Draft', 'topic' => 'Topic']);
         $attributes = CreateResponse::fake()->toArray();
         unset($attributes['usage']);
         $client = $this->fake([CreateResponse::from($attributes, CreateResponse::fakeResponseMetaInformation())]);

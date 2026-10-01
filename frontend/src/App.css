@@ -10,6 +10,7 @@
 }
 
 .header-inner {
+  flex-wrap: wrap;
   max-width: 1360px;
   margin: auto;
   min-height: 84px;
@@ -56,6 +57,7 @@ nav {
 }
 
 .account {
+  flex-wrap: wrap;
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -67,6 +69,51 @@ nav {
   display: grid;
   font-size: .85rem;
   min-width: 0;
+}
+
+.language-switcher {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.content-languages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: 1rem;
+  font-size: .875rem;
+}
+
+.content-languages button {
+  padding: .35rem .5rem;
+}
+
+.content-languages button {
+  color: #443e9b;
+  border-radius: 8px;
+}
+
+.content-languages button[aria-current="true"] {
+  background: #efedfb;
+  font-weight: 700;
+}
+
+.language-switcher button {
+  padding: .35rem .5rem;
+  color: #556074;
+  background: transparent;
+}
+
+.language-switcher button + button {
+  border-left: 1px solid #ced5df;
+  border-radius: 0;
+}
+
+.language-switcher button[aria-pressed="true"] {
+  color: #443e9b;
+  background: #efedfb;
 }
 
 .account-info span {

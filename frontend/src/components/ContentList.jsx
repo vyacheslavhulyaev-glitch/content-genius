@@ -1,12 +1,18 @@
+import { useTranslation } from 'react-i18next'
 import { useEffect, useRef, useState } from 'react'
 import { request, requireSuccess, csrfToken } from '../lib/api'
 import ContentCard from './ContentCard'
+import { mergeContentMutation, mergeContentSnapshot, selectedGroupContents } from '../lib/contentVersions'
 
 export default function ContentList({ onSessionExpired, refreshVersion }) {
+  const { t } = useTranslation()
   const [contents, setContents] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [actions, setActions] = useState({})
+  const [selectedContentIds, setSelectedContentIds] = useState({})
+  const [generatingContentIds, setGeneratingContentIds] = useState(() => new Set())
+  const [reloadVersion, setReloadVersion] = useState(0)
   const mounted = useRef(false)
   useEffect(() => {
     mounted.current = true
@@ -25,11 +31,7 @@ export default function ContentList({ onSessionExpired, refreshVersion }) {
         await requireSuccess(response)
         const result = await response.json()
         if (active) {
-          setContents((current) => result.map((content) => (
-            (revisions.current.get(content.id) ?? 0) !== (startedRevisions.get(content.id) ?? 0)
-              ? current.find((item) => item.id === content.id)
-              : content
-          )).filter(Boolean))
+          setContents((current) => mergeContentSnapshot(current, result, revisions.current, startedRevisions))
           setError('')
         }
       } catch (failure) {
@@ -46,29 +48,33 @@ export default function ContentList({ onSessionExpired, refreshVersion }) {
 
     loadContents()
     return () => { active = false }
-  }, [onSessionExpired, refreshVersion])
+  }, [onSessionExpired, refreshVersion, reloadVersion])
 
   async function mutateContent(content, operation, fields) {
-    if (pendingActions.current.has(content.id)) return false
-    if (operation === 'delete' && !window.confirm(`Delete "${content.title}"? This cannot be undone.`)) return false
+    if (pendingActions.current.has(content.content_group_id)) return false
+    if (operation === 'delete' && !window.confirm(t('Delete "{{title}}"? This cannot be undone.', { title: content.title }))) return false
 
-    pendingActions.current.add(content.id)
+    pendingActions.current.add(content.content_group_id)
+    const generation = operation === 'generate' || operation === 'regenerate'
+    if (generation) setGeneratingContentIds((current) => new Set(current).add(content.id))
     setActions((current) => ({ ...current, [content.id]: { pending: operation, error: '', errors: {} } }))
     try {
-      const generation = operation === 'generate' || operation === 'regenerate'
-      const response = await request(`/api/contents/${content.id}${generation ? `/${operation}` : ''}`, {
-        method: generation ? 'POST' : operation === 'edit' ? 'PATCH' : 'DELETE',
-        headers: { 'X-XSRF-TOKEN': csrfToken(), ...(operation === 'edit' ? { 'Content-Type': 'application/json' } : {}) },
-        ...(operation === 'edit' ? { body: JSON.stringify(fields) } : {}),
+      const hasBody = operation === 'edit' || operation === 'translations'
+      const response = await request(`/api/contents/${content.id}${generation || operation === 'translations' ? `/${operation}` : ''}`, {
+        method: generation || operation === 'translations' ? 'POST' : operation === 'edit' ? 'PATCH' : 'DELETE',
+        headers: { 'X-XSRF-TOKEN': csrfToken(), ...(hasBody ? { 'Content-Type': 'application/json' } : {}) },
+        ...(hasBody ? { body: JSON.stringify(fields) } : {}),
       })
       await requireSuccess(response)
       const result = operation === 'delete' ? null : await response.json()
       if (!mounted.current) return false
-      revisions.current.set(content.id, (revisions.current.get(content.id) ?? 0) + 1)
-      setContents((current) => operation === 'delete'
-        ? current.filter((item) => item.id !== content.id)
-        : current.map((item) => item.id === content.id ? (generation ? result.content : result) : item))
+      revisions.current.set(content.content_group_id, (revisions.current.get(content.content_group_id) ?? 0) + 1)
+      setContents((current) => mergeContentMutation(current, content, generation ? result.content : result))
+      if (operation === 'translations') {
+        setSelectedContentIds((current) => ({ ...current, [content.content_group_id]: result.id }))
+      }
       setActions((current) => ({ ...current, [content.id]: { pending: false, error: '', errors: {} } }))
+      if (!generation) setReloadVersion((version) => version + 1)
       return true
     } catch (failure) {
       if (!mounted.current) return false
@@ -76,32 +82,48 @@ export default function ContentList({ onSessionExpired, refreshVersion }) {
         onSessionExpired()
         return false
       }
-      const message = failure.status === 409
-        ? 'This action conflicts with the current content state, or generation is already pending. Reload to check the latest state.'
-        : failure.status === 503
-          ? 'The AI service is currently unavailable. Your existing text has been kept.'
-          : failure.status === 422 && operation === 'edit'
-            ? 'Please check the highlighted fields.'
-            : 'Could not complete the request. Please try again.'
+      const message = failure.status === 422 && operation === 'translations'
+        ? 'Could not add this language version. It may already exist. Reload to check the latest versions.'
+        : failure.status === 409
+          ? 'This action conflicts with the current content state, or generation is already pending. Reload to check the latest state.'
+          : failure.status === 503
+            ? 'The AI service is currently unavailable. Your existing text has been kept.'
+            : failure.status === 422 && operation === 'edit'
+              ? 'Please check the highlighted fields.'
+              : 'Could not complete the request. Please try again.'
       setActions((current) => ({ ...current, [content.id]: {
         pending: false, error: message, errors: operation === 'edit' ? failure.errors || {} : {},
       } }))
       return false
     } finally {
-      pendingActions.current.delete(content.id)
+      pendingActions.current.delete(content.content_group_id)
+      if (generation && mounted.current) {
+        setGeneratingContentIds((current) => {
+          const remaining = new Set(current)
+          remaining.delete(content.id)
+          return remaining
+        })
+      }
     }
   }
 
+  const busyGroups = new Set(contents.filter((content) => actions[content.id]?.pending).map((content) => content.content_group_id))
+
   return (
     <section aria-labelledby="contents-heading">
-      <div className="section-heading"><h2 id="contents-heading">Your content</h2><span className="muted">{contents.length} items</span></div>
-      {loading && <p role="status">Loading drafts...</p>}
-      {error && <p role="alert">{error}</p>}
-      {!loading && !error && contents.length === 0 && <div className="empty-state"><h3>Your next idea starts here</h3><p>Create your first draft, then generate content when you are ready.</p></div>}
+      <div className="section-heading"><h2 id="contents-heading">{t('Your content')}</h2><span className="muted">{t('items', { count: contents.length })}</span></div>
+      {loading && <p role="status">{t('Loading drafts...')}</p>}
+      {error && <p role="alert">{t(error)}</p>}
+      {!loading && !error && contents.length === 0 && <div className="empty-state"><h3>{t('Your next idea starts here')}</h3><p>{t('Create your first draft, then generate content when you are ready.')}</p></div>}
       <ul className="content-list">
-        {contents.map((content) => (
-          <li key={content.id}>
-            <ContentCard content={content} action={actions[content.id]}
+        {selectedGroupContents(contents, selectedContentIds).map((content) => (
+          <li key={content.content_group_id}>
+            <ContentCard key={content.id} content={content} action={actions[content.id]}
+              onSelectVersion={(id) => setSelectedContentIds((current) => ({ ...current, [content.content_group_id]: id }))}
+              isGenerating={generatingContentIds.has(content.id)}
+              generatingContentIds={generatingContentIds}
+              groupBusy={busyGroups.has(content.content_group_id)}
+              onAddLanguage={(language) => mutateContent(content, 'translations', { content_language: language })}
               onGenerate={() => mutateContent(content, content.generated_content === null ? 'generate' : 'regenerate')}
               onSave={(fields) => mutateContent(content, 'edit', fields)}
               onDelete={() => mutateContent(content, 'delete')}

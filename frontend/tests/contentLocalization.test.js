@@ -1,0 +1,219 @@
+import assert from 'node:assert/strict'
+import { after, before, test } from 'node:test'
+import { readFile } from 'node:fs/promises'
+import { createServer } from 'vite'
+import React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+
+let server
+let i18n
+let ContentCard
+let DraftForm
+let LoginForm
+let ContentLanguageSelect
+const storage = new Map([['contentgenius.ui-language', 'uk']])
+const previousDocument = globalThis.document
+const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+
+before(async () => {
+  globalThis.document = { documentElement: { lang: '' } }
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value),
+  } })
+  server = await createServer({ server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom' })
+  i18n = (await server.ssrLoadModule('/src/lib/i18n.js')).default
+  ContentCard = (await server.ssrLoadModule('/src/components/ContentCard.jsx')).default
+  DraftForm = (await server.ssrLoadModule('/src/components/DraftForm.jsx')).default
+  LoginForm = (await server.ssrLoadModule('/src/components/LoginForm.jsx')).default
+  ContentLanguageSelect = (await server.ssrLoadModule('/src/components/ContentLanguageSelect.jsx')).default
+})
+
+after(async () => {
+  await server?.close()
+  globalThis.document = previousDocument
+  if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage)
+  else delete globalThis.localStorage
+})
+
+const render = (component, props = {}) => renderToStaticMarkup(React.createElement(component, props))
+const content = {
+  id: 101, title: 'Original title', topic: 'Original topic', tone: 'Original tone', length: 'Short',
+  content_language: 'en', primary_language: 'en', generated_content: 'Original generated text',
+  created_at: '2026-09-30T12:00:00Z',
+  translations: [
+    { id: 101, content_language: 'en', has_generated_content: true, is_generation_stale: false },
+    { id: 118, content_language: 'de', has_generated_content: false, is_generation_stale: false },
+  ],
+}
+
+const versionButton = (markup, id) => markup.match(new RegExp(`<button[^>]*data-content-id="${id}"[^>]*>.*?</button>`))?.[0]
+
+test('stored UI locale does not select a different article version or draft language', async () => {
+  assert.equal(i18n.resolvedLanguage, 'uk')
+  for (const language of ['uk', 'de', 'en']) {
+    await i18n.changeLanguage(language)
+    assert.equal(globalThis.document.documentElement.lang, language)
+    assert.equal(storage.get('contentgenius.ui-language'), language)
+    const card = render(ContentCard, { content, generatingContentIds: new Set([118]) })
+    assert.match(card, /data-content-id="101" aria-current="true"/)
+    assert.match(card, /data-content-id="118"/)
+    assert.match(card, /Original generated text/)
+    assert.match(versionButton(card, 101), /✓/)
+    assert.match(versionButton(card, 118), /…/)
+    assert.doesNotMatch(versionButton(card, 118), /✓/)
+    assert.match(render(DraftForm), /value="en"[^>]*selected=""/)
+  }
+  assert.equal(content.content_language, 'en')
+  assert.equal(content.primary_language, 'en')
+})
+
+test('version buttons and missing-language actions are localized independently of stored text', async () => {
+  await i18n.changeLanguage('en')
+  const card = render(ContentCard, { content })
+  assert.match(card, /aria-label="Open Deutsch version: Language version exists, content not generated yet"/)
+  assert.match(card, /aria-label="Add Українська version: No language version yet"/)
+  assert.doesNotMatch(card, /aria-label="Add English version:/)
+  assert.doesNotMatch(card, /aria-label="Add Deutsch version:/)
+  assert.match(card, /title="Add Українська version: No language version yet"[^>]*>UA <span aria-hidden="true">\+<\/span>/)
+  const pending = render(ContentCard, { content, action: { pending: 'translations' } })
+  assert.match(pending, /Adding language version/)
+  assert.match(pending, /disabled="" aria-label="Add Українська version: No language version yet"/)
+})
+
+test('opening a draft highlights its button independently and keeps the neutral status icon', async () => {
+  await i18n.changeLanguage('en')
+  const draft = { ...content, id: 118, content_language: 'de', generated_content: null }
+  const card = render(ContentCard, { content: draft })
+  const selected = versionButton(card, 118)
+  assert.match(selected, /aria-current="true"/)
+  assert.match(selected, /○/)
+  assert.doesNotMatch(selected, /✓/)
+  assert.match(selected, /title="Open Deutsch version: Language version exists, content not generated yet"/)
+  assert.doesNotMatch(versionButton(card, 101), /aria-current/)
+  assert.match(versionButton(card, 101), /✓/)
+})
+
+test('generated and stale versions have distinct icons and accessible status labels', async () => {
+  await i18n.changeLanguage('en')
+  const stale = { ...content, translations: [content.translations[0], {
+    ...content.translations[1], has_generated_content: true, is_generation_stale: true,
+  }] }
+  const card = render(ContentCard, { content: stale })
+  assert.match(versionButton(card, 101), /✓/)
+  assert.match(versionButton(card, 101), /title="Open English version: Generated and up to date"/)
+  assert.match(versionButton(card, 118), /↻/)
+  assert.match(versionButton(card, 118), /aria-label="Open Deutsch version: Needs regeneration"/)
+  assert.doesNotMatch(versionButton(card, 118), /✓/)
+})
+
+test('pending generation is shown on the current and sibling cards without a completion checkmark', async () => {
+  await i18n.changeLanguage('en')
+  const current = render(ContentCard, { content, action: { pending: 'regenerate' }, isGenerating: true, generatingContentIds: new Set([101]) })
+  assert.match(versionButton(current, 101), /…/)
+  assert.match(versionButton(current, 101), /Generation in progress/)
+  assert.doesNotMatch(versionButton(current, 101), /✓/)
+  const sibling = render(ContentCard, { content, generatingContentIds: new Set([118]) })
+  assert.match(versionButton(sibling, 118), /…/)
+  assert.match(versionButton(sibling, 118), /Generation in progress/)
+  assert.match(versionButton(sibling, 101), /✓/)
+})
+
+test('generating or regenerating DE leaves EN and UK unchanged on every card, regardless of active language', async () => {
+  await i18n.changeLanguage('en')
+  for (const operation of ['generate', 'regenerate']) {
+    const translations = [content.translations[0], {
+      ...content.translations[1], has_generated_content: operation === 'regenerate',
+    }, { id: 133, content_language: 'uk', has_generated_content: false, is_generation_stale: false }]
+    const generatingContentIds = new Set([118])
+    for (const version of translations) {
+      const ownContent = { ...content, id: version.id, content_language: version.content_language,
+        generated_content: version.has_generated_content ? 'Existing text' : null, translations }
+      const ownPending = generatingContentIds.has(version.id)
+      const card = render(ContentCard, {
+        content: ownContent, groupBusy: true, generatingContentIds, isGenerating: ownPending,
+        action: ownPending ? { pending: operation } : undefined,
+      })
+      assert.match(versionButton(card, 101), /✓/)
+      assert.doesNotMatch(versionButton(card, 101), /…/)
+      assert.match(versionButton(card, 118), /…/)
+      assert.match(versionButton(card, 133), /○/)
+      assert.doesNotMatch(versionButton(card, 133), /…/)
+      assert.match(versionButton(card, version.id), /aria-current="true"/)
+      assert.equal(card.includes('role="status"'), ownPending)
+      assert.equal(card.includes(operation === 'generate' ? '>Generating...</button>' : '>Regenerating...</button>'), ownPending)
+    }
+  }
+})
+
+test('successful DE generation becomes current while failure restores draft or stale status', async () => {
+  await i18n.changeLanguage('en')
+  for (const previous of ['draft', 'generated', 'stale']) {
+    const translations = [content.translations[0], {
+      ...content.translations[1], has_generated_content: previous !== 'draft', is_generation_stale: previous === 'stale',
+    }, { id: 133, content_language: 'uk', has_generated_content: false, is_generation_stale: false }]
+    const original = { ...content, translations }
+    const pending = render(ContentCard, { content: original, generatingContentIds: new Set([118]) })
+    assert.match(versionButton(pending, 118), /…/)
+
+    const failed = render(ContentCard, { content: original, generatingContentIds: new Set(), groupBusy: false })
+    assert.ok(versionButton(failed, 118).includes(previous === 'draft' ? '○' : previous === 'stale' ? '↻' : '✓'))
+    assert.match(versionButton(failed, 101), /✓/)
+    assert.match(versionButton(failed, 133), /○/)
+
+    const completed = { ...original, translations: translations.map(version => version.id === 118
+      ? { ...version, has_generated_content: true, is_generation_stale: false } : version) }
+    const succeeded = render(ContentCard, { content: completed, generatingContentIds: new Set() })
+    assert.match(versionButton(succeeded, 118), /✓/)
+    assert.match(versionButton(succeeded, 101), /✓/)
+    assert.match(versionButton(succeeded, 133), /○/)
+    assert.doesNotMatch(succeeded, /…/)
+  }
+})
+
+test('two generating IDs are independent and settling one does not clear the other', async () => {
+  await i18n.changeLanguage('uk')
+  const original = { ...content, translations: [...content.translations,
+    { id: 133, content_language: 'uk', has_generated_content: false, is_generation_stale: false }] }
+  const generatingContentIds = new Set([118, 133])
+  const both = render(ContentCard, { content: original, generatingContentIds })
+  assert.match(versionButton(both, 101), /✓/)
+  assert.match(versionButton(both, 101), /aria-current="true"/)
+  assert.match(versionButton(both, 118), /…/)
+  assert.match(versionButton(both, 133), /…/)
+
+  const remaining = new Set(generatingContentIds)
+  remaining.delete(118)
+  const settled = render(ContentCard, { content: original, generatingContentIds: remaining })
+  assert.match(versionButton(settled, 101), /✓/)
+  assert.match(versionButton(settled, 118), /○/)
+  assert.match(versionButton(settled, 133), /…/)
+  assert.deepEqual([...generatingContentIds], [118, 133])
+})
+
+test('browser translation is disabled on article text and inputs, not UI containers', () => {
+  const card = render(ContentCard, { content })
+  assert.match(card, /<h3 translate="no" class="notranslate">Original title/)
+  assert.match(card, /class="content-topic notranslate" translate="no">Original topic/)
+  assert.match(card, /class="generated-content notranslate" translate="no">Original generated text/)
+  assert.doesNotMatch(card, /<article[^>]*translate="no"/)
+  const draft = render(DraftForm)
+  assert.equal((draft.match(/translate="no" class="notranslate"/g) ?? []).length, 4)
+  assert.doesNotMatch(draft, /<section[^>]*translate="no"/)
+})
+
+test('occupied languages are disabled during editing and new drafts allow all languages', () => {
+  const props = { id: 'language', value: 'en', onChange: () => {} }
+  assert.match(render(ContentLanguageSelect, { ...props, disabledLanguages: ['de'] }), /value="de"[^>]*disabled=""/)
+  assert.doesNotMatch(render(ContentLanguageSelect, props), /disabled=""/)
+})
+
+test('all locales contain the same UI messages and existing status messages retranslate', async () => {
+  const dictionaries = await Promise.all(['en', 'uk', 'de'].map(async language => JSON.parse(await readFile(`src/locales/${language}.json`, 'utf8'))))
+  const keys = dictionary => Object.keys(dictionary).filter(key => !key.startsWith('items_')).sort()
+  assert.deepEqual(keys(dictionaries[0]), keys(dictionaries[1]))
+  assert.deepEqual(keys(dictionaries[0]), keys(dictionaries[2]))
+  for (const [index, language] of ['en', 'uk', 'de'].entries()) {
+    await i18n.changeLanguage(language)
+    assert.ok(render(LoginForm, { status: 'Signing in...' }).includes(dictionaries[index]['Signing in...']))
+  }
+})

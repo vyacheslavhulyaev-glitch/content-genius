@@ -27,7 +27,7 @@ class RegenerateContentTest extends TestCase
 
     private function content(User $user): Content
     {
-        $content = $user->contents()->create([
+        $content = Content::factory()->for($user)->create([
             'title' => 'Title', 'topic' => 'Topic', 'tone' => 'Professional', 'length' => 'Short',
             'generated_content' => 'Old text',
         ]);
@@ -74,7 +74,7 @@ class RegenerateContentTest extends TestCase
     public function test_drafts_and_pending_requests_cannot_be_regenerated(): void
     {
         $user = User::factory()->create();
-        $draft = $user->contents()->create(['title' => 'Draft', 'topic' => 'Topic']);
+        $draft = Content::factory()->for($user)->create(['title' => 'Draft', 'topic' => 'Topic']);
         $generated = $this->content($user);
         $user->aiRequests()->create(['content_id' => $generated->id, 'status' => 'pending']);
         $client = $this->fake([]);
@@ -126,14 +126,16 @@ class RegenerateContentTest extends TestCase
         $snapshot = $content->generationInputs();
         $client = $this->fake([CreateResponse::fake()], function () use ($content): void {
             $this->assertSame(0, DB::transactionLevel());
-            Content::findOrFail($content->id)->update(['title' => 'New title', 'tone' => 'Casual']);
+            $this->patchJson("/api/contents/{$content->id}", ['title' => 'New title', 'tone' => 'Casual', 'content_language' => 'de'])->assertOk();
         });
         $this->actingAs($user, 'web')->postJson("/api/contents/{$content->id}/{$mode}")->assertOk()
             ->assertJsonPath('content.title', 'New title')->assertJsonPath('content.tone', 'Casual')
+            ->assertJsonPath('content.content_language', 'de')
             ->assertJsonPath('content.is_generation_stale', true)->assertJsonMissingPath('content.generation_fingerprint');
         $this->assertSame($snapshot->fingerprint(), $content->refresh()->generation_fingerprint);
         $this->assertSame('Casual', $content->tone);
         $client->chat()->assertSent(fn (string $method, array $parameters): bool => $parameters['messages'][1]['content'] === $snapshot->prompt());
+        $client->chat()->assertSent(fn (string $method, array $parameters): bool => str_contains($parameters['messages'][0]['content'], 'The generated content must be written in English.'));
         $this->getJson('/api/contents')->assertJsonPath('0.is_generation_stale', true);
     }
 
