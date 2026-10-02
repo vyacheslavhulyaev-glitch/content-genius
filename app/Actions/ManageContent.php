@@ -5,6 +5,7 @@ namespace App\Actions;
 use App\Enums\ContentLanguage;
 use App\Models\Content;
 use App\Models\User;
+use App\Support\SeoFields;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -32,7 +33,7 @@ class ManageContent
                 $source = $this->lockContent($user, $contentId);
                 $this->ensureLanguageAvailable($source, $language);
                 $translation = $user->contents()->make([
-                    ...$source->only(['title', 'topic', 'tone', 'length']),
+                    ...$source->only(['title', 'topic', 'tone', 'length', ...SeoFields::INPUTS]),
                     'content_language' => $language,
                 ]);
                 $translation->contentGroup()->associate($source->contentGroup);

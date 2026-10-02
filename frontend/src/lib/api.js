@@ -17,8 +17,22 @@ export async function requireSuccess(response) {
     const body = await response.json().catch(() => null)
     const failure = new Error(`HTTP ${response.status}: ${body?.message || response.statusText || 'Request failed'}`)
     failure.status = response.status
+    failure.code = body?.code
     failure.errors = body?.errors || {}
     throw failure
+  }
+}
+
+export function moderationErrorMessage(code) {
+  switch (code) {
+    case 'moderation_input_blocked':
+      return 'Your draft was blocked by moderation. Remove prohibited content and try again.'
+    case 'moderation_output_blocked':
+      return 'The generated text was blocked by moderation. Your existing text has been kept.'
+    case 'moderation_unavailable':
+      return 'Moderation is currently unavailable. Your existing text has been kept. Please try again.'
+    default:
+      return null
   }
 }
 

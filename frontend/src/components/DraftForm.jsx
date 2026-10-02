@@ -3,10 +3,12 @@ import { useEffect, useRef, useState } from 'react'
 import { request, requireSuccess, csrfToken } from '../lib/api'
 import ContentLanguageSelect from './ContentLanguageSelect'
 import { validationMessage } from '../lib/validation'
+import SeoFields from './SeoFields'
+import { seoFormFields, seoPayload } from '../lib/seo'
 
 export default function DraftForm({ onCreated, onSessionExpired }) {
   const { t } = useTranslation()
-  const [fields, setFields] = useState({ title: '', topic: '', tone: '', length: '', content_language: 'en' })
+  const [fields, setFields] = useState({ title: '', topic: '', tone: '', length: '', content_language: 'en', ...seoFormFields() })
   const [busy, setBusy] = useState(false)
   const pending = useRef(false)
   const mounted = useRef(false)
@@ -27,7 +29,7 @@ export default function DraftForm({ onCreated, onSessionExpired }) {
     setValidationErrors({})
     setStatus('Creating draft...')
 
-    const payload = { title: fields.title.trim(), topic: fields.topic.trim(), content_language: fields.content_language }
+    const payload = { title: fields.title.trim(), topic: fields.topic.trim(), content_language: fields.content_language, ...seoPayload(fields) }
     for (const field of ['tone', 'length']) {
       if (fields[field].trim()) payload[field] = fields[field].trim()
     }
@@ -66,7 +68,7 @@ export default function DraftForm({ onCreated, onSessionExpired }) {
         {['title', 'topic', 'tone', 'length'].map((field) => (
           <div className="draft-field" key={field}>
             <label htmlFor={`draft-${field}`}>
-              {t(field.charAt(0).toUpperCase() + field.slice(1))}
+              {t(field === 'length' ? 'Article length' : field.charAt(0).toUpperCase() + field.slice(1))}
               {['tone', 'length'].includes(field) && t(' (optional)')}
             </label>
             <input id={`draft-${field}`} name={field} type="text" maxLength={255}
@@ -81,6 +83,7 @@ export default function DraftForm({ onCreated, onSessionExpired }) {
             )}
           </div>
         ))}
+        <SeoFields idPrefix="draft" fields={fields} onChange={setFields} disabled={busy} errors={validationErrors} />
         <ContentLanguageSelect id="draft-content-language" value={fields.content_language} disabled={busy}
           onChange={(event) => setFields({ ...fields, content_language: event.target.value })}
           errors={validationErrors.content_language} />

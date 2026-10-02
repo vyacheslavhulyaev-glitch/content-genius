@@ -19,7 +19,7 @@ body {
   min-width: 320px;
 }
 
-button, input, select {
+button, input, select, textarea {
   font: inherit;
 }
 
@@ -78,7 +78,7 @@ button {
   transition: background-color .15s;
 }
 
-input, select {
+input, select, textarea {
   width: 100%;
   min-width: 0;
   border: 1px solid #c8cfda;
@@ -88,15 +88,15 @@ input, select {
   color: inherit;
 }
 
-input:hover, select:hover {
+input:hover, select:hover, textarea:hover {
   border-color: #929daf;
 }
 
-input:disabled, select:disabled {
+input:disabled, select:disabled, textarea:disabled {
   background: #f0f2f6;
 }
 
-input[aria-invalid="true"], select[aria-invalid="true"] {
+input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="true"] {
   border-color: #b42318;
 }
 

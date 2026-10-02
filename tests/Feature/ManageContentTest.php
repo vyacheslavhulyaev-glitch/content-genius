@@ -77,9 +77,11 @@ class ManageContentTest extends TestCase
         $this->actingAs($user, 'web')->patchJson("/api/contents/{$content->id}", [
             'user_id' => User::factory()->create()->id,
             'generated_content' => 'Injected', 'generation_fingerprint' => 'Injected',
+            'generated_content_html' => '<script>alert(1)</script>',
             'metadata' => ['injected' => true], 'created_at' => '2000-01-01',
             'status' => 'completed', 'tokens_used' => 100, 'cost' => 100,
-        ])->assertOk()->assertJsonPath('is_generation_stale', false)->assertJsonMissingPath('generation_fingerprint');
+        ])->assertOk()->assertJsonPath('is_generation_stale', false)
+            ->assertJsonPath('generated_content_html', "<p>Original text</p>\n")->assertJsonMissingPath('generation_fingerprint');
         $this->assertSame($before, $content->refresh()->getAttributes());
         $this->assertDatabaseCount('ai_requests', 0);
         $this->assertFalse($content->isFillable('generation_fingerprint'));
@@ -93,7 +95,7 @@ class ManageContentTest extends TestCase
         $user = User::factory()->create();
         $content = Content::factory()->for($user)->create(['title' => 'Title', 'topic' => 'Topic'])->refresh();
         $this->actingAs($user, 'web')->patchJson("/api/contents/{$content->id}", [])
-            ->assertOk()->assertExactJson([...$content->toArray(), 'primary_language' => 'en',
+            ->assertOk()->assertExactJson([...$content->toArray(), 'generated_content_html' => null, 'primary_language' => 'en',
                 'translations' => [['id' => $content->id, 'content_language' => 'en', 'has_generated_content' => false, 'is_generation_stale' => false]]]);
         $this->patchJson("/api/contents/{$content->id}", ['tone' => ' ', 'length' => null])
             ->assertOk()->assertJsonPath('tone', null)->assertJsonPath('length', null)

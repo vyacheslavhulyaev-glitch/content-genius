@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\ArticleMarkdown;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -11,6 +12,7 @@ class ContentResource extends JsonResource
     {
         return [
             ...$this->resource->attributesToArray(),
+            'generated_content_html' => app(ArticleMarkdown::class)->render($this->generated_content),
             'primary_language' => $this->contentGroup->primary_language->value,
             'translations' => $this->contentGroup->contents->map(fn ($content): array => [
                 'id' => $content->id,

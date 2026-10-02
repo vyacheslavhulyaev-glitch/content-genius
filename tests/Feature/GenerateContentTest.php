@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AIRequest;
 use App\Models\Content;
 use App\Models\User;
+use App\Support\SeoArticle;
 use Closure;
 use Exception;
 use GuzzleHttp\Exception\ConnectException;
@@ -27,6 +28,8 @@ use OpenAI\Testing\ClientFake;
 use OpenAI\Testing\Enums\OverrideStrategy;
 use OpenAI\Testing\Requests\TestRequest;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\MocksContentModeration;
+use Tests\Support\SeoArticleResponse;
 use Tests\TestCase;
 use Throwable;
 use TypeError;
@@ -35,6 +38,7 @@ class GenerateContentTest extends TestCase
 {
     // Avoid an outer test transaction so the provider boundary can verify commit.
     use DatabaseMigrations;
+    use MocksContentModeration;
 
     private function draft(User $user): Content
     {
@@ -88,7 +92,7 @@ class GenerateContentTest extends TestCase
         $user = User::factory()->create();
         $content = $this->draft($user);
         $original = $content->toArray();
-        $providerResponse = CreateResponse::fake([
+        $providerResponse = SeoArticleResponse::fake([
             'choices' => [['message' => ['content' => "  Generated text\n"]]],
             'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 20, 'total_tokens' => 30],
         ]);
@@ -127,11 +131,13 @@ class GenerateContentTest extends TestCase
         $aiRequest = AIRequest::sole();
         $content->refresh();
         $response->assertExactJson([
-            'content' => [...$content->toArray(), 'primary_language' => 'en',
+            'content' => [...$content->toArray(),
+                'generated_content_html' => "<h1>Generated text</h1>\n<h2>Overview</h2>\n<p>Useful article body.</p>\n<h3>Details</h3>\n<p>Practical information for readers.</p>\n",
+                'primary_language' => 'en',
                 'translations' => [['id' => $content->id, 'content_language' => 'en', 'has_generated_content' => true, 'is_generation_stale' => false]]],
             'ai_request' => ['id' => $aiRequest->id, 'status' => 'completed', 'tokens_used' => 30, 'cost' => null],
         ]);
-        $this->assertSame('Generated text', $content->generated_content);
+        $this->assertSame(SeoArticleResponse::markdown('Generated text'), $content->generated_content);
         $this->assertSame($content->generationInputs()->fingerprint(), $content->generation_fingerprint);
         $response->assertJsonPath('content.is_generation_stale', false)->assertJsonMissingPath('content.generation_fingerprint');
         foreach (['user_id', 'title', 'topic', 'tone', 'length', 'metadata', 'created_at'] as $field) {
@@ -148,9 +154,10 @@ class GenerateContentTest extends TestCase
             && $parameters === [
                 'model' => 'test-generation-model',
                 'messages' => [
-                    ['role' => 'system', 'content' => 'Write content using the supplied draft details. Return only the generated text. The generated content must be written in English.'],
-                    ['role' => 'user', 'content' => "Title: Stored title\nTopic: Stored topic\nTone: Friendly\nLength: Short"],
+                    ['role' => 'system', 'content' => $content->generationInputs()->systemInstruction()],
+                    ['role' => 'user', 'content' => $content->generationInputs()->prompt()],
                 ],
+                'response_format' => SeoArticle::responseFormat(),
             ]);
     }
 
@@ -158,7 +165,7 @@ class GenerateContentTest extends TestCase
     {
         $user = User::factory()->create();
         $content = Content::factory()->for($user)->create(['title' => 'Draft', 'topic' => 'Topic']);
-        $attributes = CreateResponse::fake()->toArray();
+        $attributes = SeoArticleResponse::fake()->toArray();
         unset($attributes['usage']);
         $client = $this->fake([CreateResponse::from($attributes, CreateResponse::fakeResponseMetaInformation())]);
 
@@ -215,7 +222,7 @@ class GenerateContentTest extends TestCase
         $user = User::factory()->create();
         $content = $this->draft($user);
         $original = $content->toArray();
-        $client = $this->fake([CreateResponse::fake([
+        $client = $this->fake([SeoArticleResponse::fake([
             'choices' => $choices,
             'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 0, 'total_tokens' => 10],
         ], strategy: OverrideStrategy::Replace)]);
@@ -281,7 +288,7 @@ class GenerateContentTest extends TestCase
         $previous = $user->aiRequests()->create([
             'content_id' => $content->id, 'status' => 'failed', 'error_message' => 'Provider request failed',
         ]);
-        $client = $this->fake([CreateResponse::fake()]);
+        $client = $this->fake([SeoArticleResponse::fake()]);
 
         $this->actingAs($user, 'web')->postJson("/api/contents/{$content->id}/generate")->assertOk();
 
@@ -298,7 +305,7 @@ class GenerateContentTest extends TestCase
         $user = User::factory()->create();
         $content = $this->draft($user);
         $original = $content->toArray();
-        $client = $this->fake([CreateResponse::fake()]);
+        $client = $this->fake([SeoArticleResponse::fake()]);
         DB::unprepared("CREATE TRIGGER fail_generation BEFORE UPDATE ON {$table} WHEN {$condition} BEGIN SELECT RAISE(ABORT, 'Sensitive SQL failure'); END");
 
         try {
@@ -330,7 +337,7 @@ class GenerateContentTest extends TestCase
         $this->withoutExceptionHandling();
         $user = User::factory()->create();
         $content = $this->draft($user);
-        $client = $this->fake([CreateResponse::fake()]);
+        $client = $this->fake([SeoArticleResponse::fake()]);
         $dispatcher = AIRequest::getEventDispatcher();
         AIRequest::setEventDispatcher(clone $dispatcher);
         AIRequest::$event(static function () use ($failure): void {

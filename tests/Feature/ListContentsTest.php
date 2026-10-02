@@ -27,12 +27,12 @@ class ListContentsTest extends TestCase
 
         $this->actingAs($user, 'web')->getJson('/api/contents')
             ->assertOk()
-            ->assertExactJson([[...$content->toArray(), 'primary_language' => 'en',
+            ->assertExactJson([[...$content->toArray(), 'generated_content_html' => null, 'primary_language' => 'en',
                 'translations' => [['id' => $content->id, 'content_language' => 'en', 'has_generated_content' => false, 'is_generation_stale' => false]]]]);
 
         $this->getJson('/api/contents?user_id='.$otherUser->id)
             ->assertOk()
-            ->assertExactJson([[...$content->toArray(), 'primary_language' => 'en',
+            ->assertExactJson([[...$content->toArray(), 'generated_content_html' => null, 'primary_language' => 'en',
                 'translations' => [['id' => $content->id, 'content_language' => 'en', 'has_generated_content' => false, 'is_generation_stale' => false]]]]);
     }
 

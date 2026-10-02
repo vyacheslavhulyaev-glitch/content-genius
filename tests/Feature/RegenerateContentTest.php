@@ -19,11 +19,14 @@ use OpenAI\Testing\ClientFake;
 use OpenAI\Testing\Enums\OverrideStrategy;
 use OpenAI\Testing\Requests\TestRequest;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\MocksContentModeration;
+use Tests\Support\SeoArticleResponse;
 use Tests\TestCase;
 
 class RegenerateContentTest extends TestCase
 {
     use DatabaseMigrations;
+    use MocksContentModeration;
 
     private function content(User $user): Content
     {
@@ -94,7 +97,7 @@ class RegenerateContentTest extends TestCase
         $old = $user->aiRequests()->create(['content_id' => $content->id, 'status' => 'completed', 'tokens_used' => 9]);
         $oldAttributes = $old->refresh()->getAttributes();
         $content->update(['tone' => 'Casual']);
-        $client = $this->fake([CreateResponse::fake([
+        $client = $this->fake([SeoArticleResponse::fake([
             'choices' => [['message' => ['content' => '  New text  ']]],
             'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 20, 'total_tokens' => 30],
         ])], function () use ($content, $oldFingerprint): void {
@@ -105,14 +108,14 @@ class RegenerateContentTest extends TestCase
         });
         $this->actingAs($user, 'web')->postJson("/api/contents/{$content->id}/regenerate", [
             'title' => 'Injected', 'generated_content' => 'Injected', 'generation_fingerprint' => 'Injected',
-        ])->assertOk()->assertJsonPath('content.generated_content', 'New text')
+        ])->assertOk()->assertJsonPath('content.generated_content', SeoArticleResponse::markdown('New text'))
             ->assertJsonPath('content.is_generation_stale', false)->assertJsonMissingPath('content.generation_fingerprint')
             ->assertJsonPath('ai_request.status', 'completed')->assertJsonPath('ai_request.tokens_used', 30);
         $this->assertNotSame($oldFingerprint, $content->refresh()->generation_fingerprint);
         $this->assertSame($content->generationInputs()->fingerprint(), $content->generation_fingerprint);
         $this->assertSame($oldAttributes, $old->refresh()->getAttributes());
         $this->assertDatabaseCount('ai_requests', 2);
-        $client->chat()->assertSent(fn (string $method, array $parameters): bool => $parameters['messages'][1]['content'] === "Title: Title\nTopic: Topic\nTone: Casual\nLength: Short");
+        $client->chat()->assertSent(fn (string $method, array $parameters): bool => $parameters['messages'][1]['content'] === $content->generationInputs()->prompt());
     }
 
     #[DataProvider('generationModes')]
@@ -124,7 +127,7 @@ class RegenerateContentTest extends TestCase
             $content->forceFill(['generated_content' => null, 'generation_fingerprint' => null])->save();
         }
         $snapshot = $content->generationInputs();
-        $client = $this->fake([CreateResponse::fake()], function () use ($content): void {
+        $client = $this->fake([SeoArticleResponse::fake()], function () use ($content): void {
             $this->assertSame(0, DB::transactionLevel());
             $this->patchJson("/api/contents/{$content->id}", ['title' => 'New title', 'tone' => 'Casual', 'content_language' => 'de'])->assertOk();
         });
@@ -171,7 +174,7 @@ class RegenerateContentTest extends TestCase
         $user = User::factory()->create();
         $content = $this->content($user);
         $before = $content->getAttributes();
-        $this->fake([CreateResponse::fake(['choices' => $choices], strategy: OverrideStrategy::Replace)]);
+        $this->fake([SeoArticleResponse::fake(['choices' => $choices], strategy: OverrideStrategy::Replace)]);
         $this->actingAs($user, 'web')->postJson("/api/contents/{$content->id}/regenerate")
             ->assertStatus(503)->assertExactJson(['error' => 'AI service unavailable']);
         $this->assertSame($before, $content->refresh()->getAttributes());
@@ -190,7 +193,7 @@ class RegenerateContentTest extends TestCase
         $content = $this->content($user);
         $content->update(['length' => 'Long']);
         $before = $content->getAttributes();
-        $this->fake([CreateResponse::fake()]);
+        $this->fake([SeoArticleResponse::fake()]);
         DB::unprepared("CREATE TRIGGER fail_regeneration BEFORE UPDATE ON {$table} WHEN {$condition} BEGIN SELECT RAISE(ABORT, 'Private SQL details'); END");
         try {
             $this->actingAs($user, 'web')->postJson("/api/contents/{$content->id}/regenerate")
@@ -213,7 +216,7 @@ class RegenerateContentTest extends TestCase
     {
         $user = User::factory()->create();
         $content = $this->content($user);
-        $attributes = CreateResponse::fake()->toArray();
+        $attributes = SeoArticleResponse::fake()->toArray();
         unset($attributes['usage']);
         $this->fake([CreateResponse::from($attributes, CreateResponse::fakeResponseMetaInformation())]);
         $this->actingAs($user, 'web')->postJson("/api/contents/{$content->id}/regenerate")
@@ -246,7 +249,7 @@ class RegenerateContentTest extends TestCase
         if ($mode === 'generate') {
             $content->update(['generated_content' => null]);
         }
-        $client = $this->fake([CreateResponse::fake()], function () use ($user, $content, $mode): void {
+        $client = $this->fake([SeoArticleResponse::fake()], function () use ($user, $content, $mode): void {
             $response = app(GenerateContent::class)($user, (string) $content->id, app(ClientContract::class), $mode === 'regenerate');
             $this->assertSame(409, $response->getStatusCode());
             $this->assertDatabaseCount('ai_requests', 1);
@@ -263,7 +266,7 @@ class RegenerateContentTest extends TestCase
         if ($mode === 'generate') {
             $content->update(['generated_content' => null]);
         }
-        $this->fake([CreateResponse::fake()], fn () => $content->delete());
+        $this->fake([SeoArticleResponse::fake()], fn () => $content->delete());
         $this->actingAs($user, 'web')->postJson("/api/contents/{$content->id}/{$mode}")->assertNotFound();
         $this->assertDatabaseMissing('contents', ['id' => $content->id]);
         $this->assertSame('failed', AIRequest::sole()->status);

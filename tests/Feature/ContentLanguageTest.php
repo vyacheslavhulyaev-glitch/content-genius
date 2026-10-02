@@ -8,13 +8,15 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use OpenAI\Contracts\ClientContract;
-use OpenAI\Responses\Chat\CreateResponse;
 use OpenAI\Testing\ClientFake;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\MocksContentModeration;
+use Tests\Support\SeoArticleResponse;
 use Tests\TestCase;
 
 class ContentLanguageTest extends TestCase
 {
+    use MocksContentModeration;
     use RefreshDatabase;
 
     public static function languages(): array
@@ -94,7 +96,7 @@ class ContentLanguageTest extends TestCase
             'title' => 'Title', 'topic' => 'Topic', 'tone' => 'Friendly', 'length' => 'Short',
             'content_language' => $language,
         ]);
-        $client = new ClientFake([CreateResponse::fake(), CreateResponse::fake()]);
+        $client = new ClientFake([SeoArticleResponse::fake(), SeoArticleResponse::fake()]);
         $this->app->instance(ClientContract::class, $client);
         $this->actingAs($user, 'web');
 
@@ -107,7 +109,8 @@ class ContentLanguageTest extends TestCase
         $client->chat()->assertSent(2);
         $client->chat()->assertSent(function (string $method, array $parameters) use ($name): bool {
             $this->assertStringContainsString("The generated content must be written in {$name}.", $parameters['messages'][0]['content']);
-            $this->assertSame("Title: Title\nTopic: Topic\nTone: Friendly\nLength: Short", $parameters['messages'][1]['content']);
+            $this->assertStringStartsWith("Title: Title\nTopic: Topic\nTone: Friendly\nLength: Short\nSEO inputs: ", $parameters['messages'][1]['content']);
+            $this->assertStringContainsString('"primary_keyword":"Title"', $parameters['messages'][1]['content']);
 
             return true;
         });
@@ -132,10 +135,10 @@ class ContentLanguageTest extends TestCase
             ->assertOk()->assertJsonPath('is_generation_stale', false);
         $this->patchJson("/api/contents/{$content->id}", ['content_language' => 'de'])->assertOk();
 
-        $client = new ClientFake([CreateResponse::fake(['choices' => [['message' => ['content' => 'Neuer Text']]]])]);
+        $client = new ClientFake([SeoArticleResponse::fake(['choices' => [['message' => ['content' => 'Neuer Text']]]])]);
         $this->app->instance(ClientContract::class, $client);
         $this->postJson("/api/contents/{$content->id}/regenerate")->assertOk()
-            ->assertJsonPath('content.is_generation_stale', false)->assertJsonPath('content.generated_content', 'Neuer Text');
+            ->assertJsonPath('content.is_generation_stale', false)->assertJsonPath('content.generated_content', SeoArticleResponse::markdown('Neuer Text'));
         $client->chat()->assertSent(fn (string $method, array $parameters): bool => str_contains($parameters['messages'][0]['content'], 'The generated content must be written in German.'));
         $this->assertNotSame($fingerprint, $content->refresh()->generation_fingerprint);
         $this->assertSame($content->generationInputs()->fingerprint(), $content->generation_fingerprint);

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ContentLanguage;
 use App\Support\GenerationInputs;
+use App\Support\SeoFields;
 use Database\Factories\ContentFactory;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -15,7 +16,7 @@ class Content extends Model
     /** @use HasFactory<ContentFactory> */
     use HasFactory;
 
-    public const GROUP_RELATIONS = ['contentGroup.contents:id,content_group_id,content_language,title,topic,tone,length,generated_content,generation_fingerprint'];
+    public const GROUP_RELATIONS = ['contentGroup.contents:id,content_group_id,content_language,title,topic,tone,length,primary_keyword,secondary_keywords,meta_title,meta_description,links,generated_content,generation_fingerprint'];
 
     protected $hidden = ['generation_fingerprint'];
 
@@ -25,7 +26,8 @@ class Content extends Model
 
     public function generationInputs(): GenerationInputs
     {
-        return new GenerationInputs($this->title, $this->topic, $this->tone, $this->length, $this->content_language);
+        return new GenerationInputs($this->title, $this->topic, $this->tone, $this->length, $this->content_language,
+            $this->only(SeoFields::INPUTS));
     }
 
     protected function isGenerationStale(): Attribute
@@ -43,11 +45,18 @@ class Content extends Model
         'content_language',
         'generated_content',
         'metadata',
+        'primary_keyword',
+        'secondary_keywords',
+        'meta_title',
+        'meta_description',
+        'links',
     ];
 
     protected $casts = [
         'content_language' => ContentLanguage::class,
         'metadata' => 'array',
+        'secondary_keywords' => 'array',
+        'links' => 'array',
     ];
 
     public function user()

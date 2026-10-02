@@ -194,10 +194,10 @@ test('browser translation is disabled on article text and inputs, not UI contain
   const card = render(ContentCard, { content })
   assert.match(card, /<h3 translate="no" class="notranslate">Original title/)
   assert.match(card, /class="content-topic notranslate" translate="no">Original topic/)
-  assert.match(card, /class="generated-content notranslate" translate="no">Original generated text/)
+  assert.match(card, /class="generated-content notranslate" translate="no" lang="en">Original generated text/)
   assert.doesNotMatch(card, /<article[^>]*translate="no"/)
   const draft = render(DraftForm)
-  assert.equal((draft.match(/translate="no" class="notranslate"/g) ?? []).length, 4)
+  assert.equal((draft.match(/translate="no" class="notranslate"/g) ?? []).length, 8)
   assert.doesNotMatch(draft, /<section[^>]*translate="no"/)
 })
 
@@ -216,4 +216,63 @@ test('all locales contain the same UI messages and existing status messages retr
     await i18n.changeLanguage(language)
     assert.ok(render(LoginForm, { status: 'Signing in...' }).includes(dictionaries[index]['Signing in...']))
   }
+})
+
+test('moderation errors retranslate in EN UA DE while preserving generated text', async () => {
+  const { moderationErrorMessage } = await server.ssrLoadModule('/src/lib/api.js')
+  for (const language of ['en', 'uk', 'de']) {
+    const dictionary = JSON.parse(await readFile(`src/locales/${language}.json`, 'utf8'))
+    await i18n.changeLanguage(language)
+    for (const code of ['moderation_input_blocked', 'moderation_output_blocked', 'moderation_unavailable']) {
+      const message = moderationErrorMessage(code)
+      assert.ok(dictionary[message])
+      const markup = render(ContentCard, { content, action: { error: message, pending: false } })
+      assert.ok(markup.includes(dictionary[message]))
+      assert.match(markup, /Original generated text/)
+    }
+  }
+  assert.equal(moderationErrorMessage('unknown_provider_error'), null)
+})
+
+test('SEO controls and generated meta fields localize without rendering AI HTML', async () => {
+  const article = { ...content, generated_title: 'Generated H1',
+    generated_content: '# H1\n\n## H2\n\n<script>alert(1)</script>\n\n### H3\n\n[guide](javascript:alert(1))',
+    generated_content_html: '<h1>H1</h1><h2>H2</h2><p>&lt;script&gt;alert(1)&lt;/script&gt;</p><h3>H3</h3><p><a>guide</a></p>',
+    generated_meta_title: '<img src=x onerror=alert(1)>', generated_meta_description: 'Saved SEO description' }
+  for (const language of ['en', 'uk', 'de']) {
+    await i18n.changeLanguage(language)
+    const dictionary = JSON.parse(await readFile(`src/locales/${language}.json`, 'utf8'))
+    const markup = render(ContentCard, { content: article })
+    assert.ok(markup.includes(dictionary['Meta title']))
+    assert.ok(markup.includes(dictionary['Meta description']))
+    assert.match(markup, /&lt;script&gt;/)
+    assert.match(markup, /&lt;img/)
+    assert.doesNotMatch(markup, /<script|<img|href="javascript:/)
+    assert.match(markup, /Saved SEO description/)
+    const form = render(DraftForm)
+    for (const label of ['Primary keyword', 'Secondary keywords', 'Meta title guidance', 'Meta description guidance', 'Add link', 'Article length']) {
+      assert.ok(form.includes(dictionary[label]))
+    }
+  }
+})
+
+test('normal article presentation renders backend Markdown headings, links, paragraphs and lists', () => {
+  const markdown = '# Article H1\n\n## Section H2\n\nBody with [guide](https://example.com/guide).\n\n### Details H3\n\n- First item'
+  const article = { ...content, generated_content: markdown,
+    generated_content_html: '<h1>Article H1</h1><h2>Section H2</h2><p>Body with <a href="https://example.com/guide">guide</a>.</p><h3>Details H3</h3><ul><li>First item</li></ul>',
+  }
+  const markup = render(ContentCard, { content: article })
+  for (const fragment of ['<h1>Article H1</h1>', '<h2>Section H2</h2>', '<h3>Details H3</h3>',
+    '<a href="https://example.com/guide">guide</a>', '<p>Body with', '<ul><li>First item</li></ul>']) {
+    assert.ok(markup.includes(fragment))
+  }
+  assert.doesNotMatch(markup, /# Article H1|## Section H2|### Details H3|\[guide\]\(/)
+  assert.equal(article.generated_content, markdown)
+})
+
+test('raw provider HTML stays escaped when no server presentation field is available', () => {
+  const article = { ...content, generated_content: '<script>alert(1)</script><img src=x onerror=alert(1)>' }
+  const markup = render(ContentCard, { content: article })
+  assert.match(markup, /&lt;script&gt;/)
+  assert.doesNotMatch(markup, /<script|<img/)
 })

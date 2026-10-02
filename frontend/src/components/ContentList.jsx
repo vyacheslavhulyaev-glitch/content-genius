@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useEffect, useRef, useState } from 'react'
-import { request, requireSuccess, csrfToken } from '../lib/api'
+import { request, requireSuccess, csrfToken, moderationErrorMessage } from '../lib/api'
 import ContentCard from './ContentCard'
 import { mergeContentMutation, mergeContentSnapshot, selectedGroupContents } from '../lib/contentVersions'
 
@@ -82,7 +82,7 @@ export default function ContentList({ onSessionExpired, refreshVersion }) {
         onSessionExpired()
         return false
       }
-      const message = failure.status === 422 && operation === 'translations'
+      const message = moderationErrorMessage(failure.code) ?? (failure.status === 422 && operation === 'translations'
         ? 'Could not add this language version. It may already exist. Reload to check the latest versions.'
         : failure.status === 409
           ? 'This action conflicts with the current content state, or generation is already pending. Reload to check the latest state.'
@@ -90,7 +90,7 @@ export default function ContentList({ onSessionExpired, refreshVersion }) {
             ? 'The AI service is currently unavailable. Your existing text has been kept.'
             : failure.status === 422 && operation === 'edit'
               ? 'Please check the highlighted fields.'
-              : 'Could not complete the request. Please try again.'
+              : 'Could not complete the request. Please try again.')
       setActions((current) => ({ ...current, [content.id]: {
         pending: false, error: message, errors: operation === 'edit' ? failure.errors || {} : {},
       } }))

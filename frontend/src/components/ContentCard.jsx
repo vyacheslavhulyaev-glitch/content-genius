@@ -4,6 +4,8 @@ import ContentLanguageSelect from './ContentLanguageSelect'
 import { contentLanguages } from '../lib/contentLanguages'
 import { validationMessage } from '../lib/validation'
 import { languageVersionStatus } from '../lib/contentVersions'
+import SeoFields from './SeoFields'
+import { seoFormFields, seoPayload } from '../lib/seo'
 
 const versionIndicators = {
   missing: { icon: '+', description: 'No language version yet' },
@@ -22,7 +24,7 @@ export default function ContentCard({ content, action, isGenerating = false, gen
   const busy = Boolean(action?.pending) || isGenerating || groupBusy
 
   function startEditing() {
-    setFields({ title: content.title, topic: content.topic, tone: content.tone || '', length: content.length || '', content_language: content.content_language })
+    setFields({ title: content.title, topic: content.topic, tone: content.tone || '', length: content.length || '', content_language: content.content_language, ...seoFormFields(content) })
     onClearError()
     setEditing(true)
   }
@@ -33,6 +35,7 @@ export default function ContentCard({ content, action, isGenerating = false, gen
       title: fields.title.trim(), topic: fields.topic.trim(),
       tone: fields.tone.trim() || null, length: fields.length.trim() || null,
       content_language: fields.content_language,
+      ...seoPayload(fields),
     })
     if (saved) setEditing(false)
   }
@@ -75,7 +78,9 @@ export default function ContentCard({ content, action, isGenerating = false, gen
       </nav>
       <dl className="content-details">
         <div><dt>{t('Tone')}</dt><dd>{content.tone ? <span translate="no" className="notranslate">{content.tone}</span> : t('Not specified')}</dd></div>
-        <div><dt>{t('Length')}</dt><dd>{content.length ? <span translate="no" className="notranslate">{content.length}</span> : t('Not specified')}</dd></div>
+        <div><dt>{t('Article length')}</dt><dd>{content.length ? <span translate="no" className="notranslate">{content.length}</span> : t('Not specified')}</dd></div>
+        <div><dt>{t('Primary keyword')}</dt><dd translate="no" className="notranslate">{content.primary_keyword || content.title}</dd></div>
+        {content.secondary_keywords?.length > 0 && <div><dt>{t('Secondary keywords')}</dt><dd translate="no" className="notranslate">{content.secondary_keywords.join(', ')}</dd></div>}
         <div><dt>{t('Content language')}</dt><dd lang={content.content_language}>
           {contentLanguages.find((language) => language.value === content.content_language)?.label}
         </dd></div>
@@ -91,7 +96,7 @@ export default function ContentCard({ content, action, isGenerating = false, gen
           {['title', 'topic', 'tone', 'length'].map((field) => (
             <div className="draft-field" key={field}>
               <label htmlFor={`edit-${content.id}-${field}`}>
-                {t(field.charAt(0).toUpperCase() + field.slice(1))}{['tone', 'length'].includes(field) && t(' (optional)')}
+                {t(field === 'length' ? 'Article length' : field.charAt(0).toUpperCase() + field.slice(1))}{['tone', 'length'].includes(field) && t(' (optional)')}
               </label>
               <input id={`edit-${content.id}-${field}`} name={field} type="text" maxLength={255}
                 translate="no" className="notranslate"
@@ -102,6 +107,7 @@ export default function ContentCard({ content, action, isGenerating = false, gen
               {action?.errors?.[field] && <p role="alert" id={`edit-${content.id}-${field}-error`}>{validationMessage(action.errors[field], t)}</p>}
             </div>
           ))}
+          <SeoFields idPrefix={`edit-${content.id}`} fields={fields} onChange={setFields} disabled={busy} errors={action?.errors} />
           <ContentLanguageSelect id={`edit-${content.id}-content-language`} value={fields.content_language} disabled={busy}
             disabledLanguages={content.translations.filter((version) => version.id !== content.id).map((version) => version.content_language)}
             onChange={(event) => setFields({ ...fields, content_language: event.target.value })}
@@ -125,7 +131,18 @@ export default function ContentCard({ content, action, isGenerating = false, gen
       {generated && (
         <div className="generated-preview">
           <h4>{t('Generated content')}</h4>
-          <div className="generated-content notranslate" translate="no">{content.generated_content}</div>
+          {content.generated_meta_title && <div className="generated-meta">
+            <strong>{t('Meta title')}</strong><p className="notranslate" translate="no" lang={content.content_language}>{content.generated_meta_title}</p>
+            <strong>{t('Meta description')}</strong><p className="notranslate" translate="no" lang={content.content_language}>{content.generated_meta_description}</p>
+          </div>}
+          {typeof content.generated_content_html === 'string' ? (
+            // This presentation field is produced by the backend's HTML-disabled CommonMark renderer.
+            // Never substitute generated_content here: it is untrusted provider Markdown.
+            <div className="generated-content notranslate" translate="no" lang={content.content_language}
+              dangerouslySetInnerHTML={{ __html: content.generated_content_html }} />
+          ) : (
+            <div className="generated-content notranslate" translate="no" lang={content.content_language}>{content.generated_content}</div>
+          )}
         </div>
       )}
       {action?.pending && <p role="status">{action.pending === 'regenerate' ? t('Regenerating content. Your previous text remains visible.')

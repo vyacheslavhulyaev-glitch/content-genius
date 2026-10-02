@@ -11,13 +11,15 @@ use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use OpenAI\Contracts\ClientContract;
-use OpenAI\Responses\Chat\CreateResponse;
 use OpenAI\Testing\ClientFake;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\MocksContentModeration;
+use Tests\Support\SeoArticleResponse;
 use Tests\TestCase;
 
 class ContentGroupTest extends TestCase
 {
+    use MocksContentModeration;
     use RefreshDatabase;
 
     public static function languages(): array
@@ -131,7 +133,7 @@ class ContentGroupTest extends TestCase
         $source->forceFill(['generation_fingerprint' => $source->generationInputs()->fingerprint()])->save();
         $sourceBefore = $source->refresh()->getAttributes();
         $client = new ClientFake([
-            CreateResponse::fake(['choices' => [['message' => ['content' => 'Generated German text']]]]),
+            SeoArticleResponse::fake(['choices' => [['message' => ['content' => 'Generated German text']]]]),
         ]);
         $this->app->instance(ClientContract::class, $client);
         $this->actingAs($source->user, 'web');
@@ -163,7 +165,7 @@ class ContentGroupTest extends TestCase
         $germanId = $expected[1]['id'];
         $expected[1]['has_generated_content'] = true;
         $this->postJson("/api/contents/{$germanId}/generate")->assertOk()
-            ->assertJsonPath('content.generated_content', 'Generated German text')
+            ->assertJsonPath('content.generated_content', SeoArticleResponse::markdown('Generated German text'))
             ->assertJsonPath('content.translations', $expected);
         foreach ($this->getJson('/api/contents')->assertOk()->json() as $version) {
             $this->assertSame($expected, $version['translations']);
@@ -171,7 +173,7 @@ class ContentGroupTest extends TestCase
 
         $expected[1]['is_generation_stale'] = true;
         $this->patchJson("/api/contents/{$germanId}", ['topic' => 'Changed German topic'])->assertOk()
-            ->assertJsonPath('generated_content', 'Generated German text')->assertJsonPath('translations', $expected);
+            ->assertJsonPath('generated_content', SeoArticleResponse::markdown('Generated German text'))->assertJsonPath('translations', $expected);
         foreach ($this->getJson('/api/contents')->assertOk()->json() as $version) {
             $this->assertSame($expected, $version['translations']);
         }
@@ -272,14 +274,14 @@ class ContentGroupTest extends TestCase
         $this->actingAs($source->user, 'web');
         $germanId = $this->postJson("/api/contents/{$source->id}/translations", ['content_language' => 'de'])->json('id');
         $client = new ClientFake([
-            CreateResponse::fake(['choices' => [['message' => ['content' => 'Erster Text']]]]),
-            CreateResponse::fake(['choices' => [['message' => ['content' => 'Zweiter Text']]]]),
+            SeoArticleResponse::fake(['choices' => [['message' => ['content' => 'Erster Text']]]]),
+            SeoArticleResponse::fake(['choices' => [['message' => ['content' => 'Zweiter Text']]]]),
         ]);
         $this->app->instance(ClientContract::class, $client);
         foreach (['generate' => 'Erster Text', 'regenerate' => 'Zweiter Text'] as $operation => $text) {
             $this->postJson("/api/contents/{$germanId}/{$operation}")->assertOk()
                 ->assertJsonPath('content.id', $germanId)->assertJsonPath('content.content_language', 'de')
-                ->assertJsonPath('content.generated_content', $text)->assertJsonPath('content.primary_language', 'en')
+                ->assertJsonPath('content.generated_content', SeoArticleResponse::markdown($text))->assertJsonPath('content.primary_language', 'en')
                 ->assertJsonCount(2, 'content.translations');
             $this->assertSame($before, $source->refresh()->getAttributes());
         }

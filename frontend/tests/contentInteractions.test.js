@@ -7,6 +7,8 @@ import { createServer } from 'vite'
 let server
 let ContentList
 let ContentCard
+let DraftForm
+let SeoFields
 let hooks
 const originalFetch = globalThis.fetch
 const originalWindow = globalThis.window
@@ -50,7 +52,7 @@ before(async () => {
         `
       },
       transform(code, id) {
-        if (!/\/components\/Content(List|Card)\.jsx$/.test(id)) return
+        if (!/\/components\/(Content(List|Card)|DraftForm|SeoFields)\.jsx$/.test(id)) return
         return code.replace(/from 'react'/g, "from 'test-hooks'")
           .replace(/from 'react-i18next'/g, "from 'test-hooks'")
       },
@@ -59,6 +61,8 @@ before(async () => {
   hooks = await server.ssrLoadModule('test-hooks')
   ContentList = (await server.ssrLoadModule('/src/components/ContentList.jsx')).default
   ContentCard = (await server.ssrLoadModule('/src/components/ContentCard.jsx')).default
+  DraftForm = (await server.ssrLoadModule('/src/components/DraftForm.jsx')).default
+  SeoFields = (await server.ssrLoadModule('/src/components/SeoFields.jsx')).default
 })
 
 after(async () => {
@@ -152,6 +156,47 @@ test('repeated language button clicks preserve each version status and never req
   assert.equal(requests.length, 0)
   assert.equal(card().content.generated_content, 'User generated text')
 })
+
+for (const [language, id] of [['en', 101], ['de', 118]]) {
+  for (const operation of ['generate', 'regenerate']) {
+    test(`UK primary group switches to ${language} and ${operation} targets only the selected Content ID`, async () => {
+      const translations = versions.map(version => ({ ...version,
+        has_generated_content: version.id === 133 || (version.id === id && operation === 'regenerate'),
+      }))
+      const contents = fixtures().map(content => ({ ...content, primary_language: 'uk',
+        title: 'Copied Ukrainian title', topic: 'Copied Ukrainian topic', translations,
+        generated_content: translations.find(version => version.id === content.id).has_generated_content ? `Saved body ${content.id}` : null,
+      }))
+      await setup(contents)
+      assert.equal(card().content.id, 133)
+      const source = structuredClone(card().content)
+      languageButtons().find(button => button.props['data-content-id'] === id).props.onClick()
+      assert.equal(card().content.id, id)
+      assert.equal(card().content.content_language, language)
+      const pending = card().onGenerate()
+      assert.equal(requests.length, 1)
+      assert.equal(requests[0].url, `http://localhost:8000/api/contents/${id}/${operation}`)
+      assert.equal(requests[0].options.method, 'POST')
+      assert.equal(requests[0].options.body, undefined)
+      languageButtons().find(button => button.props['data-content-id'] === 133).props.onClick()
+      const updated = { ...contents.find(content => content.id === id), generated_content: `New ${language} article`,
+        generated_content_html: `<p>New ${language} article</p>`, is_generation_stale: false,
+        translations: translations.map(version => version.id === id ? { ...version, has_generated_content: true } : version),
+      }
+      requests[0].resolve(response({ content: updated }))
+      assert.equal(await pending, true)
+      assert.equal(card().content.id, 133)
+      const { translations: ignoredSourceVersions, ...sourceFields } = source
+      const { translations: ignoredCurrentVersions, ...currentFields } = card().content
+      assert.deepEqual(currentFields, sourceFields)
+      assert.deepEqual(ignoredCurrentVersions.filter(version => version.id !== id), ignoredSourceVersions.filter(version => version.id !== id))
+      languageButtons().find(button => button.props['data-content-id'] === id).props.onClick()
+      assert.equal(card().content.generated_content, `New ${language} article`)
+      assert.equal(card().content.content_language, language)
+      assert.equal(card().content.primary_language, 'uk')
+    })
+  }
+}
 
 test('creating drafts, switching, rehydrating, generating and editing keep per-Content status', async () => {
   const original = fixtures()[0]
@@ -303,6 +348,25 @@ test('concurrent requests in separate groups preserve the other pending ID on fa
   assert.deepEqual([...card().generatingContentIds], [])
 })
 
+for (const [code, status, message] of [
+  ['moderation_input_blocked', 422, 'Your draft was blocked by moderation. Remove prohibited content and try again.'],
+  ['moderation_output_blocked', 422, 'The generated text was blocked by moderation. Your existing text has been kept.'],
+  ['moderation_unavailable', 503, 'Moderation is currently unavailable. Your existing text has been kept. Please try again.'],
+]) {
+  test(`${code} displays a safe error and preserves existing text and all version states`, async () => {
+    await setup()
+    const original = structuredClone(card().content)
+    const pending = card().onGenerate()
+    requests[0].resolve(response({ code, error: 'Untrusted raw provider text' }, status))
+    assert.equal(await pending, false)
+    assert.deepEqual(card().content, original)
+    assert.equal(card().action.error, message)
+    assert.equal(card().action.pending, false)
+    assert.equal(card().groupBusy, false)
+    assert.deepEqual([...card().generatingContentIds], [])
+  })
+}
+
 test('creating a missing version selects it without moving the group or navigating', async () => {
   const contents = fixtures().slice(0, 2).map(content => ({ ...content, translations: versions.slice(0, 2) }))
   await setup([...contents, { ...fixtures()[0], id: 200, content_group_id: 99 }])
@@ -318,4 +382,79 @@ test('creating a missing version selects it without moving the group or navigati
   assert.equal(window.location.hash, '#unchanged')
   assert.equal(window.scrollY, 640)
   assert.deepEqual(scrollCalls, [])
+})
+
+test('draft SEO form adds edits removes links and submits the structured schema', async () => {
+  await setup()
+  hooks.reset()
+  let created = 0
+  const renderDraft = () => hooks.render(DraftForm, { onCreated: () => created++, onSessionExpired })
+  renderDraft()
+  hooks.flushEffects()
+  const input = name => nodes(renderDraft(), node => node.type === 'input' && node.props.name === name)[0]
+  const seo = () => nodes(renderDraft(), node => node.type === SeoFields)[0].props
+  const seoTree = () => hooks.renderIsolated(SeoFields, seo())
+  const seoInput = name => nodes(seoTree(), node => node.props?.name === name)[0]
+  const add = () => nodes(seoTree(), node => node.type === 'button' && node.props.children === 'Add link')[0].props.onClick()
+  input('title').props.onChange({ target: { value: 'SEO guide' } })
+  input('topic').props.onChange({ target: { value: 'Casino games' } })
+  seoInput('primary_keyword').props.onChange({ target: { value: ' online casino ' } })
+  seoInput('secondary_keywords').props.onChange({ target: { value: 'slots\nbetting' } })
+  seoInput('meta_title').props.onChange({ target: { value: ' SEO title ' } })
+  seoInput('meta_description').props.onChange({ target: { value: ' SEO description ' } })
+  add()
+  add()
+  seoInput('links.0.anchor').props.onChange({ target: { value: ' guide ' } })
+  seoInput('links.0.url').props.onChange({ target: { value: ' https://example.com/guide ' } })
+  nodes(seoTree(), node => node.type === 'button' && node.props.children === 'Remove link')[1].props.onClick()
+  assert.equal(seo().fields.links.length, 1)
+  assert.equal(seoInput('links.0.url').props.type, 'url')
+  assert.equal(seoInput('links.0.anchor').props.maxLength, 120)
+  assert.equal(seoInput('meta_title').props.maxLength, 60)
+  const pending = nodes(renderDraft(), node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} })
+  assert.deepEqual(JSON.parse(requests[0].options.body), {
+    title: 'SEO guide', topic: 'Casino games', content_language: 'en',
+    primary_keyword: 'online casino', secondary_keywords: ['slots', 'betting'],
+    meta_title: 'SEO title', meta_description: 'SEO description',
+    links: [{ anchor: 'guide', url: 'https://example.com/guide' }],
+  })
+  requests[0].resolve(response({}, 201))
+  await pending
+  assert.equal(created, 1)
+})
+
+test('SEO link rows enforce the limit and expose nested validation errors', async () => {
+  await setup()
+  let fields = { primary_keyword: 'casino', secondary_keywords: '', meta_title: '', meta_description: '', links: [] }
+  const tree = () => hooks.renderIsolated(SeoFields, { idPrefix: 'test', fields, onChange: value => { fields = value }, errors: {
+    'links.0.url': ['The links.0.url field must be a valid URL.'],
+    'secondary_keywords.0': ['The secondary_keywords.0 field has a duplicate value.'],
+  } })
+  const add = () => nodes(tree(), node => node.type === 'button' && node.props.children === 'Add link')[0]
+  for (let index = 0; index < 10; index++) add().props.onClick()
+  assert.equal(add().props.disabled, true)
+  assert.equal(fields.links.length, 10)
+  assert.equal(nodes(tree(), node => node.props?.name === 'links.0.url')[0].props['aria-invalid'], true)
+  assert.ok(nodes(tree(), node => node.props?.role === 'alert').some(node => node.props.children === 'Enter a valid HTTP or HTTPS URL.'))
+  assert.ok(nodes(tree(), node => node.props?.role === 'alert').some(node => node.props.children === 'Remove duplicate keywords or URLs.'))
+})
+
+test('editing SEO inputs retains the article language and sends no generated meta fields', async () => {
+  await setup()
+  hooks.reset()
+  const content = { ...fixtures()[1], primary_keyword: 'casino', secondary_keywords: ['slots'],
+    meta_title: 'Guidance', meta_description: 'Description', links: [{ anchor: 'Guide', url: 'https://example.com' }],
+    generated_meta_title: 'Generated title', generated_meta_description: 'Generated description' }
+  let saved
+  const renderCard = () => hooks.render(ContentCard, { content, onClearError: () => {}, onSave: async value => { saved = value; return true } })
+  nodes(renderCard(), node => node.type === 'button' && node.props.children === 'Edit')[0].props.onClick()
+  const props = nodes(renderCard(), node => node.type === SeoFields)[0].props
+  props.onChange({ ...props.fields, primary_keyword: 'updated casino', links: [] })
+  await nodes(renderCard(), node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} })
+  assert.equal(saved.content_language, 'de')
+  assert.equal(saved.primary_keyword, 'updated casino')
+  assert.deepEqual(saved.secondary_keywords, ['slots'])
+  assert.deepEqual(saved.links, [])
+  assert.equal(saved.generated_meta_title, undefined)
+  assert.equal(content.generated_meta_title, 'Generated title')
 })
