@@ -140,5 +140,13 @@
   "Language version exists, content not generated yet": "Мовна версія існує, контент ще не згенеровано",
   "Generated and up to date": "Згенеровано й актуально",
   "Generation in progress": "Генерація триває",
-  "{{action}}: {{status}}": "{{action}}: {{status}}"
+  "{{action}}: {{status}}": "{{action}}: {{status}}",
+  "AI request limit reached. Try again in {{minutes}} minute(s). Your existing content has been kept.": "Ліміт AI-запитів досягнуто. Спробуйте через {{minutes}} хв. Попередній контент збережено.",
+  "Only SEO article requests are supported. Remove instructions that override application rules.": "Підтримуються лише SEO-статті. Видаліть інструкції обходу правил застосунку.",
+  "The combined AI inputs are too long. Shorten the brief, keywords or links.": "Загальний обсяг AI-даних завеликий. Скоротіть опис, ключові слова або посилання.",
+  "Choose an article length between {{min}} and {{max}} words.": "Оберіть довжину статті від {{min}} до {{max}} слів.",
+  "Custom prompts and arbitrary body inputs are not supported.": "Довільні промпти та текстові входи не підтримуються.",
+  "One keyword per line, up to {{max}}. Keywords guide generation; they are not meta tags.": "Одне ключове слово на рядок, до {{max}}. Ключові слова керують генерацією, а не є метатегами.",
+  "Up to {{max}} unique HTTP or HTTPS URLs with contextual anchor text.": "До {{max}} унікальних HTTP/HTTPS URL з контекстним анкором.",
+  "Choose {{min}}–{{max}} words; default {{default}}.": "Оберіть {{min}}–{{max}} слів; типово {{default}}."
 }

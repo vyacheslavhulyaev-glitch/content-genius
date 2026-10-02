@@ -8,16 +8,18 @@ The Content create/edit API accepts:
 
 | Field | Representation and limits |
 | --- | --- |
-| `title`, `topic` | Required draft text, up to 255 characters each. |
+| `title`, `topic` | Required draft text, up to 180 / 1000 characters. |
 | `primary_keyword` | Optional text, up to 120 characters. Missing/empty values use the draft title as the generation target for compatibility with existing drafts. New UI forms require a keyword. |
-| `secondary_keywords` | Up to 10 nonempty strings, up to 120 characters each. Case-insensitive duplicates and repeats of the effective primary keyword are rejected. |
+| `secondary_keywords` | Up to 8 nonempty strings, up to 80 characters each. Case-insensitive duplicates and repeats of the effective primary keyword are rejected. |
 | `meta_title` | Optional editorial guidance, up to 60 characters. |
 | `meta_description` | Optional editorial guidance, up to 160 characters. |
-| `links` | Up to 10 objects containing only `anchor` and `url`. Anchors are required and at most 120 characters. URLs are required, at most 2048 characters, and must use HTTP or HTTPS. Repeated URL values after trimming are rejected, even with different anchors. |
+| `links` | Up to 5 objects containing only `anchor` and `url`. Anchors are required and at most 80 characters. URLs are required, at most 1024 characters, and must use HTTP or HTTPS. Repeated URL values after trimming are rejected, even with different anchors. |
 | `content_language` | Existing `en`, `uk`, `de` values. |
-| `tone`, `length` | Existing optional text fields, up to 255 characters. `length` describes the article length, for example `800 words`. Generation defaults to approximately 800 words when omitted. |
+| `tone`, `length` | Tone is optional text up to 80 characters. Length is a constrained word target of 250–1500 words, for example `800 words`, defaulting to 800. Legacy Short/Medium/Long remain accepted. |
 
 Keyword, meta and link values are trimmed. Empty lists and null lists have the same fingerprint. Secondary keyword and link order is meaningful and included in the fingerprint. Keywords are generation targets, never a meta-keywords ranking tag.
+
+Generation inputs are supplied as a JSON data object with a bounded numeric `article_words` value. Aggregate input size, purpose protection, output token budget and shared Generate/Regenerate quota are described in [Demo access and generation protection](demo-protection.md).
 
 SEO inputs are stored per Content ID. New language versions copy inputs from their source as an editable starting point; they do not copy generated title, article, meta fields or fingerprint. The selected Content row's `content_language` controls all generated article and meta text, regardless of the group primary language or the language of copied inputs. Foreign-language keyword phrases use natural equivalents in the target language; phrases already in that language remain unchanged. Exact link anchors and URLs are preserved. Edit copied keywords/anchors when different language-specific targets are desired.
 

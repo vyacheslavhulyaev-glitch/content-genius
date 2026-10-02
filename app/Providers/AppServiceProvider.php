@@ -23,6 +23,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        Gate::define('view-admin-dashboard', fn (User $user): bool => $user->is_admin === true);
+        Gate::define('view-admin-dashboard', fn (User $user): bool => $user->is_admin === true && ! $user->is_demo);
     }
 }

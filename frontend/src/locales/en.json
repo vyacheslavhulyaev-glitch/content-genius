@@ -138,5 +138,13 @@
   "Language version exists, content not generated yet": "Language version exists, content not generated yet",
   "Generated and up to date": "Generated and up to date",
   "Generation in progress": "Generation in progress",
-  "{{action}}: {{status}}": "{{action}}: {{status}}"
+  "{{action}}: {{status}}": "{{action}}: {{status}}",
+  "AI request limit reached. Try again in {{minutes}} minute(s). Your existing content has been kept.": "AI request limit reached. Try again in {{minutes}} minute(s). Your existing content has been kept.",
+  "Only SEO article requests are supported. Remove instructions that override application rules.": "Only SEO article requests are supported. Remove instructions that override application rules.",
+  "The combined AI inputs are too long. Shorten the brief, keywords or links.": "The combined AI inputs are too long. Shorten the brief, keywords or links.",
+  "Choose an article length between {{min}} and {{max}} words.": "Choose an article length between {{min}} and {{max}} words.",
+  "Custom prompts and arbitrary body inputs are not supported.": "Custom prompts and arbitrary body inputs are not supported.",
+  "One keyword per line, up to {{max}}. Keywords guide generation; they are not meta tags.": "One keyword per line, up to {{max}}. Keywords guide generation; they are not meta tags.",
+  "Up to {{max}} unique HTTP or HTTPS URLs with contextual anchor text.": "Up to {{max}} unique HTTP or HTTPS URLs with contextual anchor text.",
+  "Choose {{min}}–{{max}} words; default {{default}}.": "Choose {{min}}–{{max}} words; default {{default}}."
 }

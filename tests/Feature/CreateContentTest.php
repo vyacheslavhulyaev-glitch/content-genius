@@ -51,10 +51,10 @@ class CreateContentTest extends TestCase
     {
         $user = User::factory()->create();
         $payload = [
-            'title' => str_repeat('a', 255),
-            'topic' => str_repeat('b', 255),
-            'tone' => str_repeat('c', 255),
-            'length' => str_repeat('d', 255),
+            'title' => str_repeat('a', 180),
+            'topic' => str_repeat('b', 1000),
+            'tone' => str_repeat('c', 80),
+            'length' => '1500 words',
             'metadata' => ['audience' => 'Developers', 'tags' => ['PHP', 'Laravel']],
         ];
 
@@ -110,7 +110,7 @@ class CreateContentTest extends TestCase
             ], ['title', 'topic', 'tone', 'length']],
             'oversized strings' => [[
                 'title' => str_repeat('a', 256),
-                'topic' => str_repeat('b', 256),
+                'topic' => str_repeat('b', 1001),
                 'tone' => str_repeat('c', 256),
                 'length' => str_repeat('d', 256),
             ], ['title', 'topic', 'tone', 'length']],

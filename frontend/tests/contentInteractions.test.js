@@ -409,7 +409,7 @@ test('draft SEO form adds edits removes links and submits the structured schema'
   nodes(seoTree(), node => node.type === 'button' && node.props.children === 'Remove link')[1].props.onClick()
   assert.equal(seo().fields.links.length, 1)
   assert.equal(seoInput('links.0.url').props.type, 'url')
-  assert.equal(seoInput('links.0.anchor').props.maxLength, 120)
+  assert.equal(seoInput('links.0.anchor').props.maxLength, 80)
   assert.equal(seoInput('meta_title').props.maxLength, 60)
   const pending = nodes(renderDraft(), node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} })
   assert.deepEqual(JSON.parse(requests[0].options.body), {
@@ -431,9 +431,9 @@ test('SEO link rows enforce the limit and expose nested validation errors', asyn
     'secondary_keywords.0': ['The secondary_keywords.0 field has a duplicate value.'],
   } })
   const add = () => nodes(tree(), node => node.type === 'button' && node.props.children === 'Add link')[0]
-  for (let index = 0; index < 10; index++) add().props.onClick()
+  for (let index = 0; index < 5; index++) add().props.onClick()
   assert.equal(add().props.disabled, true)
-  assert.equal(fields.links.length, 10)
+  assert.equal(fields.links.length, 5)
   assert.equal(nodes(tree(), node => node.props?.name === 'links.0.url')[0].props['aria-invalid'], true)
   assert.ok(nodes(tree(), node => node.props?.role === 'alert').some(node => node.props.children === 'Enter a valid HTTP or HTTPS URL.'))
   assert.ok(nodes(tree(), node => node.props?.role === 'alert').some(node => node.props.children === 'Remove duplicate keywords or URLs.'))
@@ -457,4 +457,40 @@ test('editing SEO inputs retains the article language and sends no generated met
   assert.deepEqual(saved.links, [])
   assert.equal(saved.generated_meta_title, undefined)
   assert.equal(content.generated_meta_title, 'Generated title')
+})
+
+for (const [code, status] of [['generation_rate_limited', 429], ['generation_purpose_blocked', 422]]) {
+  test(`${code} preserves the selected article and clears pending generation`, async () => {
+    await setup()
+    const before = structuredClone(card().content)
+    const pending = card().onGenerate()
+    requests[0].resolve(response({ code, retry_after: 125, error: 'Sensitive provider output' }, status))
+    assert.equal(await pending, false)
+    assert.deepEqual(card().content, before)
+    assert.equal(card().action.pending, false)
+    assert.deepEqual([...card().generatingContentIds], [])
+    assert.doesNotMatch(card().action.error, /Sensitive/)
+    if (status === 429) assert.equal(card().action.errorValues.minutes, 3)
+  })
+}
+
+test('draft inputs expose realistic bounds and article length serializes a numeric word target', async () => {
+  await setup()
+  hooks.reset()
+  const renderDraft = () => hooks.render(DraftForm, { onCreated: () => {}, onSessionExpired })
+  const input = name => nodes(renderDraft(), node => node.type === 'input' && node.props.name === name)[0]
+  assert.equal(input('title').props.maxLength, 180)
+  assert.equal(input('topic').props.maxLength, 1000)
+  assert.equal(input('tone').props.maxLength, 80)
+  assert.equal(input('length').props.type, 'number')
+  assert.equal(input('length').props.min, 250)
+  assert.equal(input('length').props.max, 1500)
+  input('title').props.onChange({ target: { value: 'SEO guide' } })
+  input('topic').props.onChange({ target: { value: 'Energy efficiency' } })
+  input('length').props.onChange({ target: { value: '500' } })
+  assert.equal(input('length').props.value, '500')
+  const pending = nodes(renderDraft(), node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} })
+  assert.equal(JSON.parse(requests[0].options.body).length, '500 words')
+  requests[0].resolve(response({}, 201))
+  await pending
 })

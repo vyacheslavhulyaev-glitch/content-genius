@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useEffect, useRef, useState } from 'react'
-import { request, requireSuccess, csrfToken } from '../lib/api'
+import { request, requireSuccess, csrfToken, generationErrorMessage } from '../lib/api'
+import { generationLimits, articleWords } from '../lib/generationLimits'
 import ContentLanguageSelect from './ContentLanguageSelect'
 import { validationMessage } from '../lib/validation'
 import SeoFields from './SeoFields'
@@ -52,7 +53,7 @@ export default function DraftForm({ onCreated, onSessionExpired }) {
         return
       }
       setStatus('Draft creation could not be confirmed.')
-      setError(failure.status === 419 ? 'Your session needs to be refreshed. Log in again.' : failure.status === 422 ? 'Please check the highlighted fields.' : 'Could not create your draft. Please try again.')
+      setError(generationErrorMessage(failure.code) ?? (failure.status === 419 ? 'Your session needs to be refreshed. Log in again.' : failure.status === 422 ? 'Please check the highlighted fields.' : 'Could not create your draft. Please try again.'))
       setValidationErrors(failure.errors || {})
     } finally {
       pending.current = false
@@ -71,16 +72,19 @@ export default function DraftForm({ onCreated, onSessionExpired }) {
               {t(field === 'length' ? 'Article length' : field.charAt(0).toUpperCase() + field.slice(1))}
               {['tone', 'length'].includes(field) && t(' (optional)')}
             </label>
-            <input id={`draft-${field}`} name={field} type="text" maxLength={255}
+            <input id={`draft-${field}`} name={field} type={field === 'length' ? 'number' : 'text'} maxLength={generationLimits[field]}
+              min={field === 'length' ? generationLimits.min_words : undefined} max={field === 'length' ? generationLimits.max_words : undefined}
+              placeholder={field === 'length' ? generationLimits.default_words : undefined}
               translate="no" className="notranslate"
               required={['title', 'topic'].includes(field)} disabled={busy}
-              value={fields[field]}
-              onChange={(event) => setFields({ ...fields, [field]: event.target.value })}
+              value={field === 'length' ? articleWords(fields.length) : fields[field]}
+              onChange={(event) => setFields({ ...fields, [field]: field === 'length' && event.target.value ? `${event.target.value} words` : event.target.value })}
               aria-invalid={Boolean(validationErrors[field])}
               aria-describedby={validationErrors[field] ? `draft-${field}-error` : undefined} />
             {validationErrors[field] && (
               <p id={`draft-${field}-error`} role="alert">{validationMessage(validationErrors[field], t)}</p>
             )}
+            {field === 'length' && <small className="muted">{t('Choose {{min}}–{{max}} words; default {{default}}.', { min: generationLimits.min_words, max: generationLimits.max_words, default: generationLimits.default_words })}</small>}
           </div>
         ))}
         <SeoFields idPrefix="draft" fields={fields} onChange={setFields} disabled={busy} errors={validationErrors} />
@@ -91,6 +95,7 @@ export default function DraftForm({ onCreated, onSessionExpired }) {
       </form>
       <p role="status">{status && t(status)}</p>
       {error && <p role="alert">{t(error)}</p>}
+      {validationErrors.inputs && <p role="alert">{validationMessage(validationErrors.inputs, t)}</p>}
     </section>
   )
 }

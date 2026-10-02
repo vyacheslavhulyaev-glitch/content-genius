@@ -10,6 +10,15 @@ use Illuminate\Notifications\Notifiable;
 
 class User extends Authenticatable
 {
+    protected static function booted(): void
+    {
+        static::saving(function (User $user): void {
+            if ($user->is_demo) {
+                $user->is_admin = false;
+            }
+        });
+    }
+
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
@@ -45,6 +54,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_admin' => 'boolean',
+            'is_demo' => 'boolean',
         ];
     }
 

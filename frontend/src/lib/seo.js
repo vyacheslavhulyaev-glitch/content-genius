@@ -1,4 +1,6 @@
-export const maxLinks = 10
+import { generationLimits } from './generationLimits.js'
+
+export const maxLinks = generationLimits.links
 
 export function seoFormFields(content = {}) {
   return {

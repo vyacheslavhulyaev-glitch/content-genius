@@ -153,6 +153,7 @@ class GenerateContentTest extends TestCase
         $client->chat()->assertSent(fn (string $method, array $parameters): bool => $method === 'create'
             && $parameters === [
                 'model' => 'test-generation-model',
+                'max_completion_tokens' => config('generation.max_output_tokens'),
                 'messages' => [
                     ['role' => 'system', 'content' => $content->generationInputs()->systemInstruction()],
                     ['role' => 'user', 'content' => $content->generationInputs()->prompt()],

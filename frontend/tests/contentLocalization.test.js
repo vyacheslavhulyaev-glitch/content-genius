@@ -276,3 +276,18 @@ test('raw provider HTML stays escaped when no server presentation field is avail
   assert.match(markup, /&lt;script&gt;/)
   assert.doesNotMatch(markup, /<script|<img/)
 })
+
+test('quota and purpose errors render localized EN UK DE messages with retry values', async () => {
+  const { generationErrorMessage } = await server.ssrLoadModule('/src/lib/api.js')
+  for (const language of ['en', 'uk', 'de']) {
+    await i18n.changeLanguage(language)
+    for (const code of ['generation_rate_limited', 'generation_purpose_blocked']) {
+      const message = generationErrorMessage(code)
+      assert.ok(i18n.exists(message))
+      const markup = render(ContentCard, { content, action: { error: message, errorValues: { minutes: 3 } } })
+      assert.ok(markup.includes(i18n.t(message, { minutes: 3 })))
+      assert.match(markup, /Original generated text/)
+      assert.doesNotMatch(markup, /\{\{minutes\}\}/)
+    }
+  }
+})

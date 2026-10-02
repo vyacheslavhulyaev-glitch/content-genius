@@ -19,8 +19,16 @@ export async function requireSuccess(response) {
     failure.status = response.status
     failure.code = body?.code
     failure.errors = body?.errors || {}
+    failure.retryAfter = Number(body?.retry_after ?? response.headers?.get('Retry-After')) || null
+    failure.resetAt = body?.reset_at ?? null
     throw failure
   }
+}
+
+export function generationErrorMessage(code) {
+  if (code === 'generation_rate_limited') return 'AI request limit reached. Try again in {{minutes}} minute(s). Your existing content has been kept.'
+  if (code === 'generation_purpose_blocked') return 'Only SEO article requests are supported. Remove instructions that override application rules.'
+  return null
 }
 
 export function moderationErrorMessage(code) {

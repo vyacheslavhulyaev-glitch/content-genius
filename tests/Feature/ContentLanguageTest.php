@@ -107,9 +107,14 @@ class ContentLanguageTest extends TestCase
         }
 
         $client->chat()->assertSent(2);
-        $client->chat()->assertSent(function (string $method, array $parameters) use ($name): bool {
+        $client->chat()->assertSent(function (string $method, array $parameters) use ($name, $language): bool {
             $this->assertStringContainsString("The generated content must be written in {$name}.", $parameters['messages'][0]['content']);
-            $this->assertStringStartsWith("Title: Title\nTopic: Topic\nTone: Friendly\nLength: Short\nSEO inputs: ", $parameters['messages'][1]['content']);
+            $data = json_decode($parameters['messages'][1]['content'], true, 512, JSON_THROW_ON_ERROR);
+            $this->assertSame('Title', $data['title']);
+            $this->assertSame('Topic', $data['topic']);
+            $this->assertSame('Friendly', $data['tone']);
+            $this->assertSame(250, $data['article_words']);
+            $this->assertSame($language, $data['content_language']);
             $this->assertStringContainsString('"primary_keyword":"Title"', $parameters['messages'][1]['content']);
 
             return true;

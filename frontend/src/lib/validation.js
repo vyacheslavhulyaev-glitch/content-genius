@@ -1,6 +1,10 @@
 export function validationMessage(messages, t) {
   return messages.map((message) => {
     if (message === 'This language version already exists.') return t('This language version already exists.')
+    if (message === 'The combined AI inputs are too long. Shorten the brief, keywords or links.') return t(message)
+    const words = message.match(/^Choose an article length between (\d+) and (\d+) words\.$/)
+    if (words) return t('Choose an article length between {{min}} and {{max}} words.', { min: words[1], max: words[2] })
+    if (message.endsWith(' field is prohibited.')) return t('Custom prompts and arbitrary body inputs are not supported.')
     if (message.endsWith(' field is required.')) return t('This field is required.')
     if (message.endsWith(' field must be a string.')) return t('Enter text in this field.')
     const maximum = message.match(/ field must not be greater than (\d+) characters\.$/)

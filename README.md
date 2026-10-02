@@ -40,6 +40,8 @@ Click Logout and confirm the status reports `/api/user` returned 401.
 Invalid credentials should display the backend error. Browser DevTools Network can verify
 the cookie initialization, login, user, logout, and final unauthorized user requests.
 
+ContentGenius demo setup, public demo credentials, input budgets and the shared AI quota are documented in [Demo access and generation protection](docs/demo-protection.md).
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:

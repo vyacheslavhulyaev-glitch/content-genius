@@ -6,6 +6,7 @@ import { validationMessage } from '../lib/validation'
 import { languageVersionStatus } from '../lib/contentVersions'
 import SeoFields from './SeoFields'
 import { seoFormFields, seoPayload } from '../lib/seo'
+import { generationLimits, articleWords } from '../lib/generationLimits'
 
 const versionIndicators = {
   missing: { icon: '+', description: 'No language version yet' },
@@ -98,10 +99,11 @@ export default function ContentCard({ content, action, isGenerating = false, gen
               <label htmlFor={`edit-${content.id}-${field}`}>
                 {t(field === 'length' ? 'Article length' : field.charAt(0).toUpperCase() + field.slice(1))}{['tone', 'length'].includes(field) && t(' (optional)')}
               </label>
-              <input id={`edit-${content.id}-${field}`} name={field} type="text" maxLength={255}
+              <input id={`edit-${content.id}-${field}`} name={field} type={field === 'length' ? 'number' : 'text'} maxLength={generationLimits[field]}
+                min={field === 'length' ? generationLimits.min_words : undefined} max={field === 'length' ? generationLimits.max_words : undefined}
                 translate="no" className="notranslate"
-                required={['title', 'topic'].includes(field)} disabled={busy} value={fields[field]}
-                onChange={(event) => setFields({ ...fields, [field]: event.target.value })}
+                required={['title', 'topic'].includes(field)} disabled={busy} value={field === 'length' ? articleWords(fields.length) : fields[field]}
+                onChange={(event) => setFields({ ...fields, [field]: field === 'length' && event.target.value ? `${event.target.value} words` : event.target.value })}
                 aria-invalid={Boolean(action?.errors?.[field])}
                 aria-describedby={action?.errors?.[field] ? `edit-${content.id}-${field}-error` : undefined} />
               {action?.errors?.[field] && <p role="alert" id={`edit-${content.id}-${field}-error`}>{validationMessage(action.errors[field], t)}</p>}
@@ -149,7 +151,8 @@ export default function ContentCard({ content, action, isGenerating = false, gen
         : action.pending === 'translations' ? t('Adding language version...')
         : action.pending === 'generate' ? t('Generating your content. This may take a moment.')
           : action.pending === 'edit' ? t('Saving content settings...') : t('Deleting content...')}</p>}
-      {action?.error && <p role="alert">{t(action.error)}</p>}
+      {action?.error && <p role="alert">{t(action.error, action.errorValues)}</p>}
+      {action?.errors?.inputs && <p role="alert">{validationMessage(action.errors.inputs, t)}</p>}
     </article>
   )
 }

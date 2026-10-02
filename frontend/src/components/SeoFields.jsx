@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { validationMessage } from '../lib/validation'
 import { maxLinks } from '../lib/seo'
+import { generationLimits as limits } from '../lib/generationLimits'
 
 export default function SeoFields({ idPrefix, fields, onChange, disabled, errors = {} }) {
   const { t } = useTranslation()
@@ -16,10 +17,10 @@ export default function SeoFields({ idPrefix, fields, onChange, disabled, errors
   return (
     <>
       {[
-        ['primary_keyword', 'Primary keyword', 120, false],
-        ['secondary_keywords', 'Secondary keywords', 1210, true],
-        ['meta_title', 'Meta title guidance', 60, false],
-        ['meta_description', 'Meta description guidance', 160, true],
+        ['primary_keyword', 'Primary keyword', limits.primary_keyword, false],
+        ['secondary_keywords', 'Secondary keywords', limits.secondary_keywords * (limits.secondary_keyword + 1) - 1, true],
+        ['meta_title', 'Meta title guidance', limits.meta_title, false],
+        ['meta_description', 'Meta description guidance', limits.meta_description, true],
       ].map(([name, label, maxLength, multiline]) => {
         const Input = multiline ? 'textarea' : 'input'
         return (
@@ -31,14 +32,14 @@ export default function SeoFields({ idPrefix, fields, onChange, disabled, errors
               onChange={event => onChange({ ...fields, [name]: event.target.value })}
               aria-invalid={messages(name).length > 0}
               aria-describedby={messages(name).length ? `${idPrefix}-${name}-error` : undefined} />
-            {name === 'secondary_keywords' && <small className="muted">{t('One keyword per line, up to 10. Keywords guide generation; they are not meta tags.')}</small>}
+            {name === 'secondary_keywords' && <small className="muted">{t('One keyword per line, up to {{max}}. Keywords guide generation; they are not meta tags.', { max: limits.secondary_keywords })}</small>}
             {error(name)}
           </div>
         )
       })}
       <fieldset className="seo-links">
         <legend>{t('Article links')}{t(' (optional)')}</legend>
-        <p className="muted">{t('Up to 10 unique HTTP or HTTPS URLs with contextual anchor text.')}</p>
+        <p className="muted">{t('Up to {{max}} unique HTTP or HTTPS URLs with contextual anchor text.', { max: maxLinks })}</p>
         {fields.links.map((link, index) => (
           <div className="seo-link-row" key={index}>
             {['anchor', 'url'].map(name => (
@@ -46,7 +47,7 @@ export default function SeoFields({ idPrefix, fields, onChange, disabled, errors
                 <label htmlFor={`${idPrefix}-link-${index}-${name}`}>{t(name === 'anchor' ? 'Anchor text' : 'URL')}</label>
                 <input id={`${idPrefix}-link-${index}-${name}`} name={`links.${index}.${name}`}
                   type={name === 'url' ? 'url' : 'text'} pattern={name === 'url' ? '[Hh][Tt][Tt][Pp][Ss]?://.+' : undefined}
-                  maxLength={name === 'url' ? 2048 : 120} required disabled={disabled}
+                  maxLength={limits[name]} required disabled={disabled}
                   translate="no" className="notranslate" value={link[name]}
                   onChange={event => editLink(index, name, event.target.value)}
                   aria-invalid={Boolean(errors[`links.${index}.${name}`])}

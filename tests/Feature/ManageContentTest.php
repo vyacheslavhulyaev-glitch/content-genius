@@ -48,8 +48,9 @@ class ManageContentTest extends TestCase
         $content = $this->content($user);
         $original = $content->toArray();
         $fingerprint = $content->generation_fingerprint;
-        $this->actingAs($user, 'web')->patchJson("/api/contents/{$content->id}", [$field => '  Changed value  '])
-            ->assertOk()->assertJsonPath($field, 'Changed value')
+        $changed = $field === 'length' ? '500 words' : 'Changed value';
+        $this->actingAs($user, 'web')->patchJson("/api/contents/{$content->id}", [$field => '  '.$changed.'  '])
+            ->assertOk()->assertJsonPath($field, $changed)
             ->assertJsonPath('generated_content', 'Original text')
             ->assertJsonPath('is_generation_stale', true)->assertJsonMissingPath('generation_fingerprint');
         $this->getJson('/api/contents')->assertOk()->assertJsonPath('0.is_generation_stale', true)
@@ -118,7 +119,7 @@ class ManageContentTest extends TestCase
         return [
             [['title' => '', 'topic' => null]],
             [['title' => [], 'topic' => [], 'tone' => [], 'length' => []]],
-            [array_fill_keys(['title', 'topic', 'tone', 'length'], str_repeat('a', 256))],
+            [array_fill_keys(['title', 'topic', 'tone', 'length'], str_repeat('a', 1001))],
         ];
     }
 

@@ -138,5 +138,13 @@
   "Language version exists, content not generated yet": "Sprachversion vorhanden, Inhalt noch nicht generiert",
   "Generated and up to date": "Generiert und aktuell",
   "Generation in progress": "Generierung läuft",
-  "{{action}}: {{status}}": "{{action}}: {{status}}"
+  "{{action}}: {{status}}": "{{action}}: {{status}}",
+  "AI request limit reached. Try again in {{minutes}} minute(s). Your existing content has been kept.": "Das Limit für KI-Anfragen ist erreicht. Versuchen Sie es in {{minutes}} Minute(n) erneut. Ihr bisheriger Inhalt wurde gespeichert.",
+  "Only SEO article requests are supported. Remove instructions that override application rules.": "Es werden nur SEO-Artikel unterstützt. Entfernen Sie Anweisungen, die Anwendungsregeln umgehen.",
+  "The combined AI inputs are too long. Shorten the brief, keywords or links.": "Die gesamten KI-Eingaben sind zu lang. Kürzen Sie Beschreibung, Keywords oder Links.",
+  "Choose an article length between {{min}} and {{max}} words.": "Wählen Sie eine Artikellänge zwischen {{min}} und {{max}} Wörtern.",
+  "Custom prompts and arbitrary body inputs are not supported.": "Benutzerdefinierte Prompts und beliebige Texteingaben werden nicht unterstützt.",
+  "One keyword per line, up to {{max}}. Keywords guide generation; they are not meta tags.": "Ein Keyword pro Zeile, bis zu {{max}}. Keywords steuern die Generierung; sie sind keine Meta-Tags.",
+  "Up to {{max}} unique HTTP or HTTPS URLs with contextual anchor text.": "Bis zu {{max}} eindeutige HTTP- oder HTTPS-URLs mit kontextbezogenem Ankertext.",
+  "Choose {{min}}–{{max}} words; default {{default}}.": "Wählen Sie {{min}}–{{max}} Wörter; Standard {{default}}."
 }

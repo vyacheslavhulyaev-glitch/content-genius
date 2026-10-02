@@ -8,13 +8,13 @@ use App\Models\AIRequest;
 use App\Models\Content;
 use App\Models\User;
 use App\Services\ContentModerator;
+use App\Services\GenerationInputPolicy;
+use App\Services\GenerationQuota;
 use App\Support\SeoArticle;
-use App\Support\SeoFields;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Validator;
 use JsonException;
 use OpenAI\Contracts\ClientContract;
 use Throwable;
@@ -22,12 +22,14 @@ use UnexpectedValueException;
 
 class GenerateContent
 {
-    public function __construct(private ContentModerator $moderator) {}
+    public function __construct(private ContentModerator $moderator, private GenerationQuota $quota, private GenerationInputPolicy $inputPolicy) {}
 
     public function __invoke(User $user, string $contentId, ClientContract $client, bool $regenerate = false): JsonResponse
     {
         try {
             $reservation = DB::transaction(function () use ($user, $contentId, $regenerate): ?array {
+                // Serialize reservations across every Content/language for this user, not provider calls.
+                User::whereKey($user->id)->lockForUpdate()->firstOrFail();
                 $content = $user->contents()->lockForUpdate()->findOrFail($contentId);
                 if (($content->generated_content !== null) !== $regenerate
                     || $content->aiRequests()->where('status', 'pending')->exists()) {
@@ -35,17 +37,8 @@ class GenerateContent
                 }
 
                 $inputs = $content->generationInputs();
-                Validator::make([
-                    'title' => $inputs->title, 'topic' => $inputs->topic,
-                    'tone' => $inputs->tone, 'length' => $inputs->length,
-                    ...$inputs->seo,
-                ], [
-                    'title' => ['required', 'string', 'max:255'],
-                    'topic' => ['required', 'string', 'max:255'],
-                    'tone' => ['nullable', 'string', 'max:255'],
-                    'length' => ['nullable', 'string', 'max:255'],
-                    ...SeoFields::rules($inputs->seo['primary_keyword'] ?: $inputs->title),
-                ])->validate();
+                $this->inputPolicy->validate($inputs);
+                $this->quota->assertAvailable($user);
                 $aiRequest = $user->aiRequests()->create([
                     'content_id' => $content->id,
                     'status' => 'pending',
@@ -73,6 +66,7 @@ class GenerateContent
         try {
             $response = $client->chat()->create([
                 'model' => config('services.openai.model'),
+                'max_completion_tokens' => max(1, (int) config('generation.max_output_tokens')),
                 'messages' => [
                     ['role' => 'system', 'content' => $inputs->systemInstruction()],
                     ['role' => 'user', 'content' => $inputs->prompt()],
