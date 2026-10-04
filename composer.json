@@ -1,9 +1,9 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "vyacheslavhulyaev-glitch/content-genius",
     "type": "project",
     "description": "ContentGenius: an AI-powered multilingual SEO content generator built with Laravel and React.",
-    "keywords": ["laravel", "framework"],
+    "keywords": ["laravel", "react", "openai", "seo", "ai", "multilingual"],
     "license": "MIT",
     "authors": [
         {

@@ -1,35 +1,140 @@
 # ContentGenius
 
-An AI-powered multilingual SEO content generator built with Laravel and React.
+AI-powered multilingual SEO content generation built as a production-style portfolio project. ContentGenius combines a Laravel backend and React frontend with OpenAI integration, AI safety controls, provider usage accounting, analytics and a Dockerized deployment.
 
-## Author
+## Live demo
 
-Built and maintained by Viacheslav Huliaiev.
+**[Open ContentGenius](https://contentgenius.hideas.dev)**
 
-Senior PHP / Web Engineer focused on Laravel, React, AI integrations, performance,
-technical SEO and application reliability.
+| Public account      | Email                                 | Password                      |
+| ------------------- | ------------------------------------- | ----------------------------- |
+| Content workflow    | `demo@contentgenius.hideas.dev`       | `ContentGeniusDemo!2026`      |
+| Recruiter analytics | `admin-demo@contentgenius.hideas.dev` | `ContentGeniusAdminDemo!2026` |
 
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+The regular demo lets you create drafts and exercise Generate/Regenerate within the shared demo budgets. Recruiter analytics are read-only, with identifying user/content fields sanitized server-side. Private real-admin credentials are never published.
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+**Maintainer action:** replace the clearly marked recruiter password placeholder above with the intentionally public demo password before committing this README.
 
-## ContentGenius local SPA authentication
+## Why this project
 
-Production container setup, PostgreSQL, local Docker verification and the shared proxy
-contract are documented in [Production Docker deployment](docs/production-docker.md).
+ContentGenius is an engineering portfolio project, rather than a commercial SaaS product. Its focus is the work surrounding an AI integration: owned content and language versions, validated output, failure-safe persistence, concurrency-safe reservations, measurable usage and a public analytics role that protects private data.
 
-Use `http://localhost:5173` for React and `http://localhost:8000` for Laravel.
-Start Laravel with `php artisan serve --host=localhost --port=8000`.
-In `/frontend`, use `npm run dev -- --host localhost --port 5173 --strictPort`.
+## Technology stack
 
-The authentication CORS configuration defaults to this frontend origin and allows credentials
-on `/sanctum/csrf-cookie`, `/login`, `/logout`, and `/api/user` only.
-If local environment overrides exist, use these non-secret settings:
+| Area     | Stack                                                                       |
+| -------- | --------------------------------------------------------------------------- |
+| Backend  | PHP 8.4 production runtime, Laravel 12, Laravel Sanctum, OpenAI PHP client  |
+| Frontend | React 19, Vite 8, i18next / react-i18next, Recharts                         |
+| Data     | PostgreSQL 17 in production; SQLite for default local development and tests |
+| Runtime  | Docker / Docker Compose, Apache, shared Caddy reverse proxy                 |
+| Hosting  | Hetzner Cloud, Ubuntu 24.04 LTS, Let's Encrypt HTTPS, Cloudflare DNS        |
+| Quality  | PHPUnit 11, Laravel Pint, ESLint, Node test runner                          |
+
+## Features
+
+**Content**
+
+- English, Ukrainian and German UI and article generation; UI locale stays independent of article language.
+- Grouped language versions with editable drafts and independent generation, regeneration and staleness tracking. Adding a language draft does not automatically translate existing text.
+- Primary/secondary keywords, contextual links and SEO metadata guidance; structured article title, Markdown and generated meta fields are validated before saving.
+- Server-side Markdown rendering escapes raw HTML and rejects unsafe link destinations.
+
+**AI safety and cost control**
+
+- Input moderation → generation → output moderation, with a purpose guard, bounded inputs and a hard output-token cap.
+- Generate and Regenerate share a per-user rolling quota: **5 logical requests per hour** by default, across all article versions.
+- Separate provider-call, input/output token and estimated USD cost accounting; missing usage is retained as unknown rather than invented.
+- Database-serialized conservative reservations enforce configurable global daily/monthly limits before every paid provider operation. Rejections and generation failures preserve previous generated content.
+
+The default generation model is **`gpt-4o-mini`**, configurable through `OPENAI_MODEL`. Demo defaults are:
+
+| Global limit                          | Default   |
+| ------------------------------------- | --------- |
+| Estimated cost per UTC day            | $0.10     |
+| Estimated cost per UTC calendar month | **$1.00** |
+| Provider calls per UTC day            | 50        |
+| Tokens per UTC day                    | 75,000    |
+
+These budgets are shared across users. Generation can return HTTP 429 when a quota or budget is exhausted, with retry/reset information. The monthly ceiling is the authoritative application cost safeguard; costs are estimates based on configured prices, not provider invoices.
+
+**Admin and observability**
+
+- Today, current-month and all-time usage summaries, token/cost statistics and the latest 20 logical AI requests.
+- Exactly two charts: a seven-day UTC call/token trend with separate axes, and all-time provider call counts for generation and both moderation stages.
+- A private real-admin view and a separate, sanitized read-only recruiter analytics view.
+
+**Production**
+
+- Built React SPA and Laravel served from one PHP/Apache container, behind HTTPS.
+- PostgreSQL on an isolated internal Docker network, with no database port published to the host.
+- Persistent database/application-storage volumes, HTTP and database-container health checks, and runtime configuration/route caches.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    Browser["Browser"] -->|HTTPS| Caddy["Caddy · TLS termination"]
+    Caddy -->|"shared Docker web network"| Web["ContentGenius web container<br/>Apache · Laravel · built React SPA"]
+    Web -->|"private internal Docker network"| Database["PostgreSQL 17"]
+    Web -->|"outbound HTTPS"| OpenAI["OpenAI API"]
+```
+
+React is compiled into the production web image. Apache and Laravel serve one public origin; Caddy terminates TLS. PostgreSQL is reachable only on the application's private internal network, and its port is not published to the host. The shared Caddy stack is managed separately from this repository.
+
+## Generate / Regenerate flow
+
+```text
+Authenticated request → role, ownership and input validation → quota reservation
+→ input moderation → generation → structured response validation
+→ output moderation → transactional persistence
+```
+
+`AIRequest` represents one logical user generation request. `ProviderCall` records each provider operation separately: a successful pipeline normally makes three calls, including both moderation stages. Both classifications currently use paid Chat Completions. Before each operation, the application reserves budget under a database mutex; afterward it reconciles reported usage and estimated cost. Provider calls run outside database transactions, and reservation estimates are not reported as actual usage.
+
+## Recruiter analytics role
+
+The dedicated account has `is_admin_demo=true` and `is_admin=false`. Public credentials give access to analytics without granting content mutation rights: create, edit, delete, translation, Generate and Regenerate endpoints return **HTTP 403** before OpenAI client resolution.
+
+Recent requests retain IDs, statuses, tokens and timestamps, but names and titles become `User #<id>` / `Content #<id>`, and emails are omitted. Real admins retain detailed data. This separation makes the shared analytics account useful for review without exposing private user/content fields or allowing paid AI calls.
+
+## Testing and quality
+
+The **current verified test suite** contains **379 backend tests / 3,357 assertions** and **73 frontend tests**. Coverage includes authentication/authorization, language versions, SEO contracts, safe rendering, moderation, failure preservation, quotas, concurrent budget reservations, UTC rollovers, accounting and recruiter-view privacy.
+
+Local validation passed with:
+
+```sh
+composer validate
+php artisan test
+php vendor/bin/pint --test
+npm --prefix frontend test
+npm --prefix frontend run lint
+npm --prefix frontend run build
+git diff --check
+```
+
+Tests use provider fakes and do not require real OpenAI calls. GitHub Actions CI/CD, automated backups and dedicated monitoring are not implemented yet.
+
+## Production deployment
+
+The live deployment runs on a Hetzner Cloud VPS with Ubuntu 24.04 LTS and Docker Compose: a PHP 8.4 / Apache application container, PostgreSQL 17, and a shared Caddy reverse proxy providing Let's Encrypt HTTPS. Cloudflare provides DNS; persistent Docker volumes and a private database network are defined in the application Compose configuration.
+
+See [Production Docker deployment](docs/production-docker.md) for the environment contract, explicit migrations and release verification. [Demo protection](docs/demo-protection.md) and [Recruiter admin demo](docs/recruiter-admin-demo.md) document the dedicated identities, safeguards and seeding procedures.
+
+## Local development
+
+Prerequisites: PHP 8.2+ with Laravel-required extensions and PDO SQLite, Composer 2, and Node.js 24 with npm. Production uses PHP 8.4 and PostgreSQL; the simplest local setup uses SQLite and two development servers.
+
+From a fresh checkout:
+
+```sh
+composer install
+npm --prefix frontend install
+php -r "file_exists('.env') || copy('.env.example', '.env');"
+php -r "file_exists('database/database.sqlite') || touch('database/database.sqlite');"
+```
+
+In your local `.env`, set:
 
 ```dotenv
 APP_URL=http://localhost:8000
@@ -37,72 +142,40 @@ FRONTEND_URL=http://localhost:5173
 SANCTUM_STATEFUL_DOMAINS=localhost:5173,localhost:8000
 SESSION_DOMAIN=null
 SESSION_SECURE_COOKIE=false
-SESSION_HTTP_ONLY=true
-SESSION_SAME_SITE=lax
 ```
 
-Use a persistent session driver (the default is `database`) with its existing sessions migration applied.
-Run `php artisan config:clear` after changing local configuration.
-The frontend smoke UI uses native fetch with credentials and `Accept: application/json`.
-It initializes cookies with `GET /sanctum/csrf-cookie`, then sends the URL-decoded
-`XSRF-TOKEN` cookie as `X-XSRF-TOKEN` on login/logout POST requests.
-Keep the session cookie HttpOnly.
+The template defaults to SQLite and database-backed sessions/cache. Then initialize the fresh local application:
 
-Open `http://localhost:5173` and log in with an existing local user's credentials.
-Confirm that the UI displays the user returned by `/api/user`; reload to check session persistence.
-Click Logout and confirm the status reports `/api/user` returned 401.
-Invalid credentials should display the backend error. Browser DevTools Network can verify
-the cookie initialization, login, user, logout, and final unauthorized user requests.
+```sh
+php artisan key:generate
+php artisan config:clear
+php artisan migrate
+php artisan db:seed --class=DemoUserSeeder
+```
 
-ContentGenius demo setup, public demo credentials, input budgets and the shared AI quota are documented in [Demo access and generation protection](docs/demo-protection.md).
+Start each server in a separate terminal:
 
-## About Laravel
+```sh
+php artisan serve --host=localhost --port=8000
+npm --prefix frontend run dev -- --host localhost --port 5173 --strictPort
+```
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+Open `http://localhost:5173`. The default **local** demo is `demo@contentgenius.example` / `ContentGeniusDemo!2026`; the live demo email differs. For local recruiter analytics, configure `ADMIN_DEMO_EMAIL` / `ADMIN_DEMO_PASSWORD` and explicitly run `php artisan db:seed --class=AdminDemoUserSeeder`.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+Drafts, authentication and tests work without a provider key. To exercise real generation locally, supply your own OpenAI key through local environment configuration; paid usage remains subject to the configured budgets. Never commit populated environment files. Run the checks above from the repository root. On Windows PowerShell, use `npm.cmd` if the execution policy blocks `npm.ps1`.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Documentation
 
-## Learning Laravel
+- [Production Docker deployment](docs/production-docker.md) — image, networks, environment and release operations.
+- [Demo access and generation protection](docs/demo-protection.md) — public demo setup, quotas and bounded inputs.
+- [Recruiter admin demo](docs/recruiter-admin-demo.md) — read-only permissions, sanitized analytics and seeding.
+- [AI usage and cost protection](docs/ai-usage.md) — provider ledger, pricing assumptions and reservation accounting.
+- [SEO article generation](docs/seo-articles.md) — input/output contract and safe Markdown presentation.
+- [Content language versions](docs/content-language-versions.md) — grouped drafts and language ownership rules.
+- [Moderation](docs/moderation.md) — classification policy and failure handling.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+## Author
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+Built and maintained by **Viacheslav Huliaiev**, Senior PHP / Web Engineer.
 
-## Laravel Sponsors
-
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
-
-### Premium Partners
-
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
-
-## Contributing
-
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Focus: Laravel, WordPress/PHP, React, AI integrations, high-traffic web platforms, technical SEO, performance and reliability.
