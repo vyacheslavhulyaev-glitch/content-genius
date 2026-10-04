@@ -13,7 +13,7 @@ class User extends Authenticatable
     protected static function booted(): void
     {
         static::saving(function (User $user): void {
-            if ($user->is_demo) {
+            if ($user->is_demo || $user->is_admin_demo) {
                 $user->is_admin = false;
             }
         });
@@ -55,6 +55,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_admin' => 'boolean',
             'is_demo' => 'boolean',
+            'is_admin_demo' => 'boolean',
         ];
     }
 

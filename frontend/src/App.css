@@ -414,6 +414,22 @@ form button {
   overflow-x: auto;
 }
 
+.analytics-section { margin-bottom: 2rem; }
+.analytics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.chart-frame { height: 280px; min-width: 0; }
+.chart-panel h3 { margin-bottom: .5rem; }
+.chart-panel > .muted { font-size: .85rem; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: .5rem 1rem; font-size: .75rem; margin-bottom: .5rem; }
+.calls-key { color: #4944a8; }
+.tokens-key { color: #087f8c; }
+.chart-empty { min-height: 240px; display: grid; place-items: center; color: #626d7e; text-align: center; }
+.recruiter-notice { margin-bottom: 1.5rem; border-left: 4px solid #4944a8; }
+.recruiter-notice p { margin: .5rem 0 0; color: #626d7e; }
+
+@media (max-width: 1000px) {
+  .analytics-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
 table {
   border-collapse: collapse;
   width: 100%;

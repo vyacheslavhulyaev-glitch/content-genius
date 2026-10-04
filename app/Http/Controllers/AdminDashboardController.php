@@ -7,11 +7,13 @@ use App\Models\Content;
 use App\Models\User;
 use App\Services\AiUsageAnalytics;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class AdminDashboardController extends Controller
 {
-    public function __invoke(AiUsageAnalytics $analytics): JsonResponse
+    public function __invoke(Request $viewer, AiUsageAnalytics $analytics): JsonResponse
     {
+        $publicDemo = $viewer->user()->is_admin_demo;
         $requests = AIRequest::query()
             ->selectRaw('COUNT(*) AS total')
             ->selectRaw('COUNT(CASE WHEN status = ? THEN 1 END) AS completed', ['completed'])
@@ -22,7 +24,7 @@ class AdminDashboardController extends Controller
 
         $recent = AIRequest::query()
             ->select(['id', 'user_id', 'content_id', 'status', 'tokens_used', 'created_at'])
-            ->with(['user:id,name,email', 'content:id,title'])
+            ->with($publicDemo ? ['user:id', 'content:id'] : ['user:id,name,email', 'content:id,title'])
             ->latest()->latest('id')->limit(20)->get();
 
         return response()->json([
@@ -39,14 +41,17 @@ class AdminDashboardController extends Controller
             ],
             'recent_ai_requests' => $recent->map(fn (AIRequest $request): array => [
                 'id' => $request->id,
-                'user' => [
+                'user' => $publicDemo ? [
+                    'id' => $request->user_id,
+                    'name' => 'User #'.$request->user_id,
+                ] : [
                     'id' => $request->user->id,
                     'name' => $request->user->name,
                     'email' => $request->user->email,
                 ],
                 'content' => $request->content === null ? null : [
                     'id' => $request->content->id,
-                    'title' => $request->content->title,
+                    'title' => $publicDemo ? 'Content #'.$request->content_id : $request->content->title,
                 ],
                 'status' => $request->status,
                 'tokens_used' => $request->tokens_used === null ? null : (int) $request->tokens_used,

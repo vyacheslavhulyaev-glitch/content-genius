@@ -8,9 +8,9 @@ export default function AppHeader({ user, page, onNavigate, onLogout, busy }) {
       <div className="header-inner">
         <span className="brand"><span className="brand-mark" aria-hidden="true">C</span>ContentGenius</span>
         <nav aria-label={t('Main navigation')}>
-          <button type="button" className="nav-button" aria-current={page === 'dashboard' ? 'page' : undefined}
-            onClick={() => onNavigate('dashboard')}>{t('Dashboard')}</button>
-          {user.is_admin === true && (
+          {user.is_admin_demo !== true && <button type="button" className="nav-button" aria-current={page === 'dashboard' ? 'page' : undefined}
+            onClick={() => onNavigate('dashboard')}>{t('Dashboard')}</button>}
+          {(user.is_admin === true || user.is_admin_demo === true) && (
             <button type="button" className="nav-button" aria-current={page === 'admin' ? 'page' : undefined}
               onClick={() => onNavigate('admin')}>{t('Admin')}</button>
           )}

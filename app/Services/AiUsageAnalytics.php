@@ -33,7 +33,19 @@ class AiUsageAnalytics
             $operations[$operation] = $this->totals(ProviderCall::where('operation', $operation));
         }
 
-        return ['currency' => config('ai_usage.currency'), 'timezone' => 'UTC', 'periods' => $periods, 'operations' => $operations];
+        $start = $now->copy()->startOfDay()->subDays(6);
+        $daily = ProviderCall::query()->whereBetween('budget_date', [$start->toDateString(), $now->toDateString()])
+            ->select('budget_date')->selectRaw('COUNT(*) AS calls')
+            ->selectRaw('COALESCE(SUM(total_tokens), 0) AS total_tokens')
+            ->groupBy('budget_date')->get()->keyBy('budget_date');
+        $trend = [];
+        for ($offset = 0; $offset < 7; $offset++) {
+            $date = $start->copy()->addDays($offset)->toDateString();
+            $row = $daily->get($date);
+            $trend[] = ['date' => $date, 'provider_calls' => (int) ($row?->calls ?? 0), 'total_tokens' => (int) ($row?->total_tokens ?? 0)];
+        }
+
+        return ['currency' => config('ai_usage.currency'), 'timezone' => 'UTC', 'periods' => $periods, 'operations' => $operations, 'trend_7_days' => $trend];
     }
 
     private function totals(Builder $query): array

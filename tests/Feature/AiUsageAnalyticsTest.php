@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Content;
 use App\Models\ProviderCall;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -70,6 +71,28 @@ class AiUsageAnalyticsTest extends TestCase
             ->assertJsonPath('provider_usage.periods.today.total_tokens', 0)
             ->assertJsonPath('provider_usage.periods.today.unknown_usage_calls', 1)
             ->assertJsonPath('provider_usage.operations.input_moderation.estimated_cost', '0.00000000');
+    }
+
+    public function test_trend_has_seven_utc_dates_with_zero_days_and_only_recorded_tokens(): void
+    {
+        config(['app.timezone' => 'Europe/Berlin']);
+        $this->travelTo(Carbon::parse('2026-11-01 00:30:00', 'Europe/Berlin'));
+        $this->providerCall('2026-10-24', 'generation', 500, 500, '0.01');
+        $this->providerCall('2026-10-25', 'generation', 10, 20, '0.01');
+        $this->providerCall('2026-10-31', 'input_moderation', 5, 5, '0.01');
+        $this->providerCall('2026-10-31', 'output_moderation', 0, 0, null, 'pending')
+            ->update(['total_tokens' => null, 'input_tokens' => null, 'output_tokens' => null]);
+        $this->providerCall('2026-11-01', 'generation', 500, 500, '0.01');
+        $response = $this->actingAs(User::factory()->admin()->create(), 'web')->getJson('/api/admin/dashboard')->assertOk();
+        $expected = [];
+        foreach (range(25, 31) as $day) {
+            $expected[] = ['date' => '2026-10-'.$day, 'provider_calls' => $day === 25 ? 1 : ($day === 31 ? 2 : 0),
+                'total_tokens' => $day === 25 ? 30 : ($day === 31 ? 10 : 0)];
+        }
+        $this->assertSame($expected, $response->json('provider_usage.trend_7_days'));
+        $response->assertJsonPath('provider_usage.operations.generation.provider_calls', 3)
+            ->assertJsonPath('provider_usage.operations.input_moderation.provider_calls', 1)
+            ->assertJsonPath('provider_usage.operations.output_moderation.provider_calls', 1);
     }
 
     public function test_normal_and_demo_accounts_cannot_access_provider_analytics_even_if_demo_admin_flag_is_corrupt(): void

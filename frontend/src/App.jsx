@@ -1,11 +1,12 @@
 import { useTranslation } from 'react-i18next'
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { request, requireSuccess, csrfToken, currentUser } from './lib/api'
 import AppHeader from './components/AppHeader'
 import LoginForm from './components/LoginForm'
 import DashboardPage from './pages/DashboardPage'
-import AdminPage from './pages/AdminPage'
 import './App.css'
+
+const AdminPage = lazy(() => import('./pages/AdminPage'))
 
 export default function App() {
   const { t } = useTranslation()
@@ -28,6 +29,7 @@ export default function App() {
       .then((authenticatedUser) => {
         if (!active) return
         setUser(authenticatedUser)
+        setPage(authenticatedUser?.is_admin_demo === true ? 'admin' : 'dashboard')
         setStatus('')
       })
       .catch(() => {
@@ -52,7 +54,7 @@ export default function App() {
       }))
       const authenticatedUser = await currentUser()
       if (!authenticatedUser) throw new Error('Session not confirmed')
-      setPage('dashboard')
+      setPage(authenticatedUser.is_admin_demo === true ? 'admin' : 'dashboard')
       setUser(authenticatedUser)
       setStatus('')
     } catch (failure) {
@@ -100,11 +102,13 @@ export default function App() {
       <main id="main-content" className="workspace">
         {status && <p role="status">{t(status)}</p>}
         {error && <p role="alert">{t(error)}</p>}
-        <div hidden={page !== 'dashboard'}>
+        {user.is_admin_demo !== true && <div hidden={page !== 'dashboard'}>
           <DashboardPage key={user.id} onSessionExpired={handleSessionExpired} />
-        </div>
-        {page === 'admin' && user.is_admin === true && (
-          <AdminPage key={user.id} onSessionExpired={handleSessionExpired} />
+        </div>}
+        {page === 'admin' && (user.is_admin === true || user.is_admin_demo === true) && (
+          <Suspense fallback={<p className="panel" role="status">{t('Loading dashboard...')}</p>}>
+            <AdminPage key={user.id} isAdminDemo={user.is_admin_demo === true} onSessionExpired={handleSessionExpired} />
+          </Suspense>
         )}
       </main>
     </>

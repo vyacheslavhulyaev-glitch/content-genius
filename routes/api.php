@@ -19,12 +19,14 @@ Route::get('/user', function (Request $request) {
 Route::get('/contents', [ContentController::class, 'index'])->middleware('auth:sanctum');
 Route::get('/admin/dashboard', AdminDashboardController::class)
     ->middleware(['auth:sanctum', 'can:view-admin-dashboard']);
-Route::post('/contents', [ContentController::class, 'store'])->middleware('auth:sanctum');
-Route::post('/contents/{content}/translations', ContentTranslationController::class)->middleware('auth:sanctum');
-Route::post('/contents/{content}/generate', GenerateContentController::class)->middleware('auth:sanctum');
-Route::patch('/contents/{content}', [ContentController::class, 'update'])->middleware('auth:sanctum');
-Route::delete('/contents/{content}', [ContentController::class, 'destroy'])->middleware('auth:sanctum');
-Route::post('/contents/{content}/regenerate', RegenerateContentController::class)->middleware('auth:sanctum');
+Route::middleware(['auth:sanctum', 'can:mutate-content'])->group(function (): void {
+    Route::post('/contents', [ContentController::class, 'store']);
+    Route::post('/contents/{content}/translations', ContentTranslationController::class);
+    Route::post('/contents/{content}/generate', GenerateContentController::class);
+    Route::patch('/contents/{content}', [ContentController::class, 'update']);
+    Route::delete('/contents/{content}', [ContentController::class, 'destroy']);
+    Route::post('/contents/{content}/regenerate', RegenerateContentController::class);
+});
 
 Route::get('/test', function () {
     return 'API works';

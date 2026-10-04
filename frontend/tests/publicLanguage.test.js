@@ -23,6 +23,7 @@ before(async () => {
         if (id !== '\0public-test-hooks') return
         return `
           import i18n from '/src/lib/i18n.js';
+          export { lazy, Suspense } from 'react';
           let slots = [], cursor = 0, effects = [];
           export function reset() { slots = []; cursor = 0; effects = []; }
           export function render(component, props = {}) { cursor = 0; return component(props); }
@@ -43,7 +44,7 @@ before(async () => {
         `
       },
       transform(code, id) {
-        if (!/\/src\/(App\.jsx|components\/(LoginForm|LanguageSwitcher)\.jsx)$/.test(id)) return
+        if (!/\/src\/(App\.jsx|components\/(LoginForm|LanguageSwitcher|AppHeader)\.jsx)$/.test(id)) return
         return code.replace(/from 'react'/g, "from 'public-test-hooks'")
           .replace(/from 'react-i18next'/g, "from 'public-test-hooks'")
       },
@@ -123,5 +124,33 @@ test('login language buttons use EN UK DE and locale survives real auth handlers
     assert.equal(globalThis.document.documentElement.lang, language)
     assert.equal(requests.filter(url => url.endsWith('/login')).length, 1)
     assert.equal(requests.filter(url => url.endsWith('/logout')).length, 1)
+  }
+})
+
+test('recruiter login and restored session open only analytics; normal demo and real admin retain navigation', async () => {
+  for (const restoreSession of [false, true]) {
+    hooks.reset()
+    let authenticated = restoreSession
+    globalThis.fetch = async url => {
+      if (url.endsWith('/login')) authenticated = true
+      if (url.endsWith('/api/user')) return { ok: authenticated, status: authenticated ? 200 : 401,
+        json: async () => ({ id: 9, name: 'Recruiter Demo', is_admin: false, is_admin_demo: true }) }
+      return { ok: true, status: 204 }
+    }
+    renderApp()
+    hooks.flushEffects()
+    await tick()
+    if (!restoreSession) await renderApp().props.onLogin('admin-demo@contentgenius.hideas.dev', 'test-only-password')
+    const tree = renderApp()
+    const header = nodes(tree, node => node.type === AppHeader)[0]
+    assert.equal(header.props.page, 'admin')
+    const demoNav = nodes(AppHeader(header.props), node => node.type === 'button' && node.props.className === 'nav-button')
+    assert.equal(demoNav.length, 1)
+    assert.equal(demoNav[0].props.children, i18n.t('Admin'))
+    assert.equal(nodes(tree, node => node.type?.name === 'DashboardPage').length, 0)
+    assert.equal(nodes(tree, node => node.props?.isAdminDemo === true).length, 1)
+  }
+  for (const [user, count] of [[{ is_admin: true }, 2], [{ is_demo: true, is_admin: false }, 1]]) {
+    assert.equal(nodes(AppHeader({ user, page: 'dashboard' }), node => node.type === 'button' && node.props.className === 'nav-button').length, count)
   }
 })

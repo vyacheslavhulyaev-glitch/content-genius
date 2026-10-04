@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { useEffect, useState } from 'react'
 import { request, requireSuccess } from '../lib/api'
 import AiUsagePanel from '../components/AiUsagePanel'
+import AiUsageCharts from '../components/AiUsageCharts'
 
 const metrics = [
   ['total_users', 'Total users'], ['total_contents', 'Total contents'],
@@ -10,7 +11,7 @@ const metrics = [
   ['pending_ai_requests', 'Pending'],
 ]
 
-export default function AdminPage({ onSessionExpired }) {
+export default function AdminPage({ onSessionExpired, isAdminDemo = false }) {
   const { t, i18n } = useTranslation()
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
@@ -43,6 +44,10 @@ export default function AdminPage({ onSessionExpired }) {
         <h1>{t('Activity overview')}</h1>
         <p className="muted">{t('Content and AI activity across all users, for all time.')}</p>
       </div>
+      {isAdminDemo && <aside className="panel recruiter-notice" aria-label={t('Read-only recruiter demo')}>
+        <strong>{t('Read-only recruiter demo')}</strong>
+        <p>{t('Explore real activity analytics. User identities and content titles are hidden. Content changes and AI generation are disabled.')}</p>
+      </aside>}
       {error && <p role="alert">{t(error)}</p>}
       {!data && !error && <p className="panel" role="status">{t('Loading dashboard...')}</p>}
       {data && (
@@ -52,7 +57,10 @@ export default function AdminPage({ onSessionExpired }) {
               <div className="panel stat-card" key={key}><dt>{t(label)}</dt><dd>{data.summary[key].toLocaleString(i18n.resolvedLanguage)}</dd></div>
             ))}
           </dl>
-          {data.provider_usage && <AiUsagePanel usage={data.provider_usage} />}
+          {data.provider_usage && <>
+            <AiUsageCharts usage={data.provider_usage} />
+            <AiUsagePanel usage={data.provider_usage} />
+          </>}
           <section className="panel recent-panel" aria-labelledby="recent-heading">
             <div className="section-heading"><h2 id="recent-heading">{t('Recent AI requests')}</h2><span className="muted">{t('Latest 20')}</span></div>
             {data.recent_ai_requests.length === 0 ? (
@@ -66,7 +74,7 @@ export default function AdminPage({ onSessionExpired }) {
                     {data.recent_ai_requests.map((item) => (
                       <tr key={item.id}>
                         <td>#{item.id}</td>
-                        <td><strong>{item.user.name}</strong><span className="table-email">{item.user.email}</span></td>
+                        <td><strong>{item.user.name}</strong>{item.user.email && <span className="table-email">{item.user.email}</span>}</td>
                         <td>{item.content?.title != null ? <span translate="no" className="notranslate">{item.content.title}</span> : t('Deleted / unavailable')}</td>
                         <td><span className={`badge ${item.status}`}>{t({ completed: 'Completed', failed: 'Failed', pending: 'Pending' }[item.status], { defaultValue: item.status })}</span></td>
                         <td className="numeric">{item.tokens_used?.toLocaleString(i18n.resolvedLanguage) ?? '—'}</td>

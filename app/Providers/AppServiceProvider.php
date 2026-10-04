@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\User;
+use Illuminate\Auth\Access\Response;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use OpenAI;
@@ -23,6 +24,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        Gate::define('view-admin-dashboard', fn (User $user): bool => $user->is_admin === true && ! $user->is_demo);
+        Gate::define('view-admin-dashboard', fn (User $user): bool => ! $user->is_demo && ($user->is_admin === true || $user->is_admin_demo === true));
+        Gate::define('mutate-content', fn (User $user): Response => $user->is_admin_demo
+            ? Response::deny('The recruiter admin demo is read-only.')
+            : Response::allow());
     }
 }
