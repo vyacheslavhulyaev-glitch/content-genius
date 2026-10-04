@@ -227,7 +227,9 @@ backups, configure DNS/TLS and the shared proxy target in its separate stack, ex
 the explicit build/migration/startup sequence, then verify HTTPS cookies, login and
 the content list through the public domain. No legacy SQLite/MySQL data is imported
 automatically; plan a separate reviewed import if existing content must be retained.
-GitHub Actions SSH deployment is deliberately left for the next focused milestone.
+GitHub Actions validation and verified-SHA SSH deployment are configured in
+[GitHub Actions deployment](github-actions-deploy.md); manual Environment/secrets
+setup and the first real workflow deployment still require verification after commit.
 
 ## Verified locally
 

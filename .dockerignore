@@ -25,6 +25,7 @@ public/build
 public/hot
 public/storage
 storage
+backups
 bootstrap/cache/*
 !bootstrap/cache/.gitignore
 database/*.sqlite*

@@ -1,0 +1,121 @@
+name: Deploy production
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Full main commit SHA with successful push CI; leave empty for the selected main revision
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    name: Verify successful CI SHA
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.ci.outputs.sha }}
+    steps:
+      - name: Require successful push CI and both required jobs
+        id: ci
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const repo = context.repo;
+            const automatic = context.eventName === 'workflow_run';
+            if (!automatic && context.ref !== 'refs/heads/main') {
+              throw new Error('Manual deployment must run from main.');
+            }
+            const sha = automatic ? context.payload.workflow_run.head_sha
+              : (context.payload.inputs?.commit_sha?.trim() || context.sha);
+            if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error('Expected a full commit SHA.');
+            const { data: workflow } = await github.rest.actions.getWorkflow({ ...repo, workflow_id: 'ci.yml' });
+            let run;
+            if (automatic) {
+              ({ data: run } = await github.rest.actions.getWorkflowRun({ ...repo, run_id: context.payload.workflow_run.id }));
+            } else {
+              const { data } = await github.rest.actions.listWorkflowRuns({
+                ...repo, workflow_id: 'ci.yml', head_sha: sha, branch: 'main', event: 'push', status: 'success', per_page: 100,
+              });
+              run = data.workflow_runs.find(candidate => candidate.head_sha === sha && candidate.conclusion === 'success');
+            }
+            if (!run || run.workflow_id !== workflow.id || run.head_sha !== sha ||
+                run.head_branch !== 'main' || run.event !== 'push' || run.status !== 'completed' ||
+                run.conclusion !== 'success' || run.head_repository?.full_name !== `${repo.owner}/${repo.repo}`) {
+              throw new Error('This exact main commit has no successful push CI run.');
+            }
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              ...repo, run_id: run.id, filter: 'latest', per_page: 100,
+            });
+            for (const name of ['Backend', 'Frontend']) {
+              const job = jobs.find(candidate => candidate.name === name);
+              if (!job || job.head_sha !== sha || job.status !== 'completed' || job.conclusion !== 'success') {
+                throw new Error(`Required CI job did not succeed: ${name}`);
+              }
+            }
+            core.setOutput('sha', sha);
+            core.info(`Verified CI run ${run.id} for ${sha}`);
+
+  deploy:
+    name: Deploy verified commit
+    needs: verify
+    runs-on: ubuntu-24.04
+    environment:
+      name: production
+      url: https://contentgenius.hideas.dev
+    concurrency:
+      group: contentgenius-production-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+          persist-credentials: false
+      - name: Deploy over verified SSH
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ needs.verify.outputs.sha }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -Eeuo pipefail
+          : "${DEPLOY_HOST:?Set DEPLOY_HOST}"
+          : "${DEPLOY_PORT:?Set DEPLOY_PORT}"
+          : "${DEPLOY_USER:?Set DEPLOY_USER}"
+          : "${DEPLOY_SSH_KEY:?Set DEPLOY_SSH_KEY}"
+          : "${DEPLOY_KNOWN_HOSTS:?Set DEPLOY_KNOWN_HOSTS}"
+          [[ "$EXPECTED_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]]
+          [[ "$DEPLOY_USER" =~ ^[a-zA-Z_][a-zA-Z0-9_-]*$ ]]
+          [[ "$DEPLOY_PORT" =~ ^[0-9]{1,5}$ ]]
+          (( 10#$DEPLOY_PORT > 0 && 10#$DEPLOY_PORT <= 65535 ))
+          umask 077
+          ssh_dir="$HOME/.ssh"
+          mkdir -p "$ssh_dir"
+          chmod 700 "$ssh_dir"
+          key_file=$(mktemp "$RUNNER_TEMP/contentgenius-ssh.XXXXXX")
+          trap 'rm -f -- "$key_file" "$ssh_dir/known_hosts"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$key_file"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          chmod 600 "$key_file" "$ssh_dir/known_hosts"
+          ssh -T -i "$key_file" -p "$DEPLOY_PORT" -l "$DEPLOY_USER" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$ssh_dir/known_hosts" -o ConnectTimeout=15 \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+            "$DEPLOY_HOST" "bash -s -- '$EXPECTED_SHA'" < scripts/deploy-production.sh

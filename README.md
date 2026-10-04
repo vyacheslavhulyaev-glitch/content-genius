@@ -13,8 +13,6 @@ AI-powered multilingual SEO content generation built as a production-style portf
 
 The regular demo lets you create drafts and exercise Generate/Regenerate within the shared demo budgets. Recruiter analytics are read-only, with identifying user/content fields sanitized server-side. Private real-admin credentials are never published.
 
-**Maintainer action:** replace the clearly marked recruiter password placeholder above with the intentionally public demo password before committing this README.
-
 ## Why this project
 
 ContentGenius is an engineering portfolio project, rather than a commercial SaaS product. Its focus is the work surrounding an AI integration: owned content and language versions, validated output, failure-safe persistence, concurrency-safe reservations, measurable usage and a public analytics role that protects private data.
@@ -113,7 +111,13 @@ npm --prefix frontend run build
 git diff --check
 ```
 
-Tests use provider fakes and do not require real OpenAI calls. GitHub Actions CI/CD, automated backups and dedicated monitoring are not implemented yet.
+Tests use provider fakes and do not require real OpenAI calls. Deployment safety tests additionally cover workflow SHA verification and release failure handling. Scheduled backups and dedicated monitoring are not implemented yet.
+
+## CI and deployment
+
+GitHub Actions is configured to validate pull requests and pushes to `main` with separate backend/frontend jobs. Production deployment requires successful CI for the exact commit, verified SSH host keys, serialized execution and a checked pre-migration database backup. Manual retries require the same CI verification.
+
+The workflows still require manual GitHub Environment/secrets setup and the first real production run after commit. Successful production CD is not claimed yet. See [GitHub Actions deployment](docs/github-actions-deploy.md) for setup, release verification and manual rollback.
 
 ## Production deployment
 
@@ -166,6 +170,7 @@ Drafts, authentication and tests work without a provider key. To exercise real g
 
 ## Documentation
 
+- [GitHub Actions deployment](docs/github-actions-deploy.md) — CI, dedicated SSH setup, verified-SHA releases and rollback.
 - [Production Docker deployment](docs/production-docker.md) — image, networks, environment and release operations.
 - [Demo access and generation protection](docs/demo-protection.md) — public demo setup, quotas and bounded inputs.
 - [Recruiter admin demo](docs/recruiter-admin-demo.md) — read-only permissions, sanitized analytics and seeding.

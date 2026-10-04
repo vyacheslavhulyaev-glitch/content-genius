@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      APP_ENV: testing
+      APP_DEBUG: "false"
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ":memory:"
+      DB_URL: ""
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+      OPENAI_API_KEY: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: "8.4"
+          extensions: mbstring, pdo_sqlite, pdo_pgsql
+          coverage: none
+          tools: composer:v2
+      - name: Locate Composer download cache
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php84-${{ hashFiles('composer.lock') }}
+      - name: Validate and install locked dependencies
+        run: |
+          composer validate --strict
+          composer install --no-interaction --no-progress --prefer-dist
+      - name: Initialize test environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+          php artisan config:clear --no-interaction
+      - name: Backend tests and style
+        run: |
+          php artisan test
+          php vendor/bin/pint --test
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Deployment configuration and safety tests
+        run: |
+          php vendor/bin/yaml-lint .github/workflows
+          bash -n scripts/deploy-production.sh
+          node --test scripts/tests/workflows.test.cjs scripts/tests/deploy-production.test.cjs
+          if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck scripts/deploy-production.sh
+          else
+            echo 'ShellCheck unavailable; Bash syntax and deployment safety tests were run.'
+          fi
+          git diff --check
+          git diff --check HEAD^ HEAD
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Frontend validation
+        run: |
+          npm ci --no-audit --no-fund
+          npm test -- --test-concurrency=1
+          npm run lint
+          npm run build
