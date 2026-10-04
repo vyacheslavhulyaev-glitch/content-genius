@@ -26,6 +26,8 @@ export async function requireSuccess(response) {
 }
 
 export function generationErrorMessage(code) {
+  if (code === 'ai_global_budget_exceeded') return 'The AI limit has been reached. Try again in {{minutes}} minute(s). Your existing content has been kept.'
+  if (code === 'ai_accounting_unavailable') return 'The AI service is currently unavailable. Your existing text has been kept.'
   if (code === 'generation_rate_limited') return 'AI request limit reached. Try again in {{minutes}} minute(s). Your existing content has been kept.'
   if (code === 'generation_purpose_blocked') return 'Only SEO article requests are supported. Remove instructions that override application rules.'
   return null

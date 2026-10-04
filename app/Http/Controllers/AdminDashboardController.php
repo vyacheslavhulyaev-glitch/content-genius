@@ -5,11 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\AIRequest;
 use App\Models\Content;
 use App\Models\User;
+use App\Services\AiUsageAnalytics;
 use Illuminate\Http\JsonResponse;
 
 class AdminDashboardController extends Controller
 {
-    public function __invoke(): JsonResponse
+    public function __invoke(AiUsageAnalytics $analytics): JsonResponse
     {
         $requests = AIRequest::query()
             ->selectRaw('COUNT(*) AS total')
@@ -25,6 +26,7 @@ class AdminDashboardController extends Controller
             ->latest()->latest('id')->limit(20)->get();
 
         return response()->json([
+            'provider_usage' => $analytics->snapshot(),
             'summary' => [
                 'total_users' => User::count(),
                 'total_contents' => Content::count(),

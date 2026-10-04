@@ -26,4 +26,9 @@ class AIRequest extends Model
     {
         return $this->belongsTo(Content::class);
     }
+
+    public function providerCalls()
+    {
+        return $this->hasMany(ProviderCall::class, 'ai_request_id');
+    }
 }

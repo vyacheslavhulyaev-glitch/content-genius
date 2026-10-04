@@ -459,7 +459,7 @@ test('editing SEO inputs retains the article language and sends no generated met
   assert.equal(content.generated_meta_title, 'Generated title')
 })
 
-for (const [code, status] of [['generation_rate_limited', 429], ['generation_purpose_blocked', 422]]) {
+for (const [code, status] of [['generation_rate_limited', 429], ['generation_purpose_blocked', 422], ['ai_global_budget_exceeded', 429], ['ai_accounting_unavailable', 503]]) {
   test(`${code} preserves the selected article and clears pending generation`, async () => {
     await setup()
     const before = structuredClone(card().content)
@@ -473,6 +473,20 @@ for (const [code, status] of [['generation_rate_limited', 429], ['generation_pur
     if (status === 429) assert.equal(card().action.errorValues.minutes, 3)
   })
 }
+
+test('monthly budget rejection keeps the article and uses the monthly retry interval', async () => {
+  await setup()
+  const before = structuredClone(card().content)
+  const pending = card().onGenerate()
+  requests[0].resolve(response({ code: 'ai_global_budget_exceeded', error: 'Monthly AI budget reached',
+    retry_after: 993600, reset_at: '2026-11-01T00:00:00Z' }, 429))
+  assert.equal(await pending, false)
+  assert.deepEqual(card().content, before)
+  assert.equal(card().action.pending, false)
+  assert.deepEqual([...card().generatingContentIds], [])
+  assert.equal(card().action.errorValues.minutes, 16560)
+  assert.doesNotMatch(card().action.error, /daily|Daily/)
+})
 
 test('draft inputs expose realistic bounds and article length serializes a numeric word target', async () => {
   await setup()

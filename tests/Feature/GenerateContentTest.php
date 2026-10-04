@@ -88,7 +88,9 @@ class GenerateContentTest extends TestCase
 
     public function test_generation_uses_only_stored_data_and_commits_the_complete_result(): void
     {
-        config(['services.openai.model' => 'test-generation-model']);
+        // Unknown pricing remains null; disable monetary ceilings for this model-isolation test.
+        config(['services.openai.model' => 'test-generation-model', 'ai_usage.budget.daily_cost' => null,
+            'ai_usage.budget.monthly_cost' => null]);
         $user = User::factory()->create();
         $content = $this->draft($user);
         $original = $content->toArray();

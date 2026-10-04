@@ -56,6 +56,7 @@ class GenerationQuotaTest extends TestCase
         $this->postJson("/api/contents/{$otherVersion->id}/generate")->assertStatus(429);
         $client->chat()->assertSent(15);
         $this->assertDatabaseCount('ai_requests', 5);
+        $this->assertDatabaseCount('provider_calls', 15);
         $this->assertSame($before, $content->refresh()->getAttributes());
         $this->travel(1)->hours();
         $this->postJson("/api/contents/{$content->id}/regenerate")->assertOk();

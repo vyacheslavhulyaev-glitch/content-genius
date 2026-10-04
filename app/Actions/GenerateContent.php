@@ -2,6 +2,8 @@
 
 namespace App\Actions;
 
+use App\Exceptions\AiAccountingUnavailable;
+use App\Exceptions\AiBudgetExceeded;
 use App\Exceptions\ModerationUnavailable;
 use App\Http\Resources\ContentResource;
 use App\Models\AIRequest;
@@ -10,6 +12,7 @@ use App\Models\User;
 use App\Services\ContentModerator;
 use App\Services\GenerationInputPolicy;
 use App\Services\GenerationQuota;
+use App\Services\TrackedOpenAI;
 use App\Support\SeoArticle;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -22,7 +25,7 @@ use UnexpectedValueException;
 
 class GenerateContent
 {
-    public function __construct(private ContentModerator $moderator, private GenerationQuota $quota, private GenerationInputPolicy $inputPolicy) {}
+    public function __construct(private ContentModerator $moderator, private GenerationQuota $quota, private GenerationInputPolicy $inputPolicy, private TrackedOpenAI $provider) {}
 
     public function __invoke(User $user, string $contentId, ClientContract $client, bool $regenerate = false): JsonResponse
     {
@@ -64,7 +67,7 @@ class GenerateContent
         }
 
         try {
-            $response = $client->chat()->create([
+            $response = $this->provider->chat($client, $aiRequest, 'generation', [
                 'model' => config('services.openai.model'),
                 'max_completion_tokens' => max(1, (int) config('generation.max_output_tokens')),
                 'messages' => [
@@ -73,6 +76,9 @@ class GenerateContent
                 ],
                 'response_format' => SeoArticle::responseFormat(),
             ]);
+        } catch (AiBudgetExceeded|AiAccountingUnavailable $exception) {
+            $this->markFailed($aiRequest, 'AI budget or accounting unavailable');
+            throw $exception;
         } catch (Throwable) {
             $this->markFailed($aiRequest, 'Provider request failed');
 
@@ -139,9 +145,12 @@ class GenerateContent
     private function moderate(string $text, ClientContract $client, AIRequest $aiRequest, string $stage, ?int $tokensUsed = null): ?JsonResponse
     {
         try {
-            if ($this->moderator->allows($text, $client)) {
+            if ($this->moderator->allows($text, $client, $aiRequest, $stage.'_moderation')) {
                 return null;
             }
+        } catch (AiBudgetExceeded|AiAccountingUnavailable $exception) {
+            $this->markFailed($aiRequest, 'AI budget or accounting unavailable', $tokensUsed);
+            throw $exception;
         } catch (ModerationUnavailable) {
             $this->markFailed($aiRequest, 'Moderation service unavailable', $tokensUsed);
 

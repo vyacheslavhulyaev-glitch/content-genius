@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AIRequest;
 use App\Models\Content;
+use App\Models\ProviderCall;
 use App\Services\ContentModerator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use OpenAI\Contracts\ClientContract;
@@ -146,6 +147,12 @@ class ModerationTest extends TestCase
         $this->assertSame('failed', AIRequest::sole()->status);
         $this->assertStringNotContainsString('Sensitive', AIRequest::sole()->error_message);
         $client->chat()->assertSent(count($responses));
+        $this->assertDatabaseCount('provider_calls', count($responses));
+        $failedCall = ProviderCall::latest('id')->firstOrFail();
+        $this->assertSame($stage === 'generation' ? 'generation' : $stage.'_moderation', $failedCall->operation);
+        $this->assertSame('failed', $failedCall->status);
+        $this->assertNull($failedCall->total_tokens);
+        $this->assertNull($failedCall->estimated_cost);
     }
 
     public static function malformedDecisions(): array
@@ -177,7 +184,9 @@ class ModerationTest extends TestCase
 
     public function test_allowed_gambling_uses_input_generation_output_order_for_all_group_languages(): void
     {
-        config(['moderation.model' => 'test-moderation', 'services.openai.model' => 'test-generation']);
+        config(['moderation.model' => 'test-moderation', 'services.openai.model' => 'test-generation',
+            'ai_usage.pricing.test-moderation' => ['input' => 0.15, 'output' => 0.60],
+            'ai_usage.pricing.test-generation' => ['input' => 2, 'output' => 12]]);
         $source = $this->draft(true);
         $versions = [$source];
         foreach (['uk', 'de'] as $language) {

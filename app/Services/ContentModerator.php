@@ -2,20 +2,26 @@
 
 namespace App\Services;
 
+use App\Exceptions\AiAccountingUnavailable;
+use App\Exceptions\AiBudgetExceeded;
 use App\Exceptions\ModerationUnavailable;
+use App\Models\AIRequest;
 use OpenAI\Contracts\ClientContract;
 use Throwable;
 
 class ContentModerator
 {
+    public function __construct(private TrackedOpenAI $provider) {}
+
     public const CATEGORIES = ['profanity', 'explicit_sexual', 'hate_harassment', 'dangerous_illegal_instructions'];
 
-    public function allows(string $text, ClientContract $client): bool
+    public function allows(string $text, ClientContract $client, AIRequest $request, string $operation): bool
     {
         // Catch failures only at the external classification boundary; never retain provider details.
         try {
-            $response = $client->chat()->create([
+            $response = $this->provider->chat($client, $request, $operation, [
                 'model' => config('moderation.model'),
+                'max_completion_tokens' => max(1, (int) config('ai_usage.moderation_max_output_tokens')),
                 'messages' => [
                     ['role' => 'system', 'content' => config('moderation.policy')],
                     ['role' => 'user', 'content' => $text],
@@ -46,6 +52,8 @@ class ContentModerator
                     throw new ModerationUnavailable;
                 }
             }
+        } catch (AiBudgetExceeded|AiAccountingUnavailable $exception) {
+            throw $exception;
         } catch (Throwable) {
             throw new ModerationUnavailable;
         }

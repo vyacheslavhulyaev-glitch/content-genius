@@ -281,7 +281,7 @@ test('quota and purpose errors render localized EN UK DE messages with retry val
   const { generationErrorMessage } = await server.ssrLoadModule('/src/lib/api.js')
   for (const language of ['en', 'uk', 'de']) {
     await i18n.changeLanguage(language)
-    for (const code of ['generation_rate_limited', 'generation_purpose_blocked']) {
+    for (const code of ['generation_rate_limited', 'generation_purpose_blocked', 'ai_global_budget_exceeded', 'ai_accounting_unavailable']) {
       const message = generationErrorMessage(code)
       assert.ok(i18n.exists(message))
       const markup = render(ContentCard, { content, action: { error: message, errorValues: { minutes: 3 } } })
@@ -289,5 +289,25 @@ test('quota and purpose errors render localized EN UK DE messages with retry val
       assert.match(markup, /Original generated text/)
       assert.doesNotMatch(markup, /\{\{minutes\}\}/)
     }
+  }
+})
+
+test('monthly budget response retains UTC reset and renders retry information in EN UK DE', async () => {
+  const { requireSuccess, generationErrorMessage } = await server.ssrLoadModule('/src/lib/api.js')
+  let failure
+  await assert.rejects(requireSuccess({ ok: false, status: 429, json: async () => ({
+    code: 'ai_global_budget_exceeded', error: 'Monthly AI budget reached',
+    retry_after: 993600, reset_at: '2026-11-01T00:00:00Z',
+  }) }), error => { failure = error; return true })
+  assert.equal(failure.resetAt, '2026-11-01T00:00:00Z')
+  for (const language of ['en', 'uk', 'de']) {
+    await i18n.changeLanguage(language)
+    const message = generationErrorMessage(failure.code)
+    const minutes = Math.ceil(failure.retryAfter / 60)
+    const markup = render(ContentCard, { content, action: { error: message, errorValues: { minutes } } })
+    assert.ok(markup.includes(i18n.t(message, { minutes })))
+    assert.match(markup, /16560/)
+    assert.match(markup, /Original generated text/)
+    assert.doesNotMatch(markup, /\{\{minutes\}\}|The daily AI limit/)
   }
 })

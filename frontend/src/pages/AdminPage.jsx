@@ -1,12 +1,13 @@
 import { useTranslation } from 'react-i18next'
 import { useEffect, useState } from 'react'
 import { request, requireSuccess } from '../lib/api'
+import AiUsagePanel from '../components/AiUsagePanel'
 
 const metrics = [
   ['total_users', 'Total users'], ['total_contents', 'Total contents'],
   ['generated_contents', 'Generated'], ['total_ai_requests', 'AI requests'],
   ['completed_ai_requests', 'Completed'], ['failed_ai_requests', 'Failed'],
-  ['pending_ai_requests', 'Pending'], ['total_tokens_used', 'Tokens used'],
+  ['pending_ai_requests', 'Pending'],
 ]
 
 export default function AdminPage({ onSessionExpired }) {
@@ -51,6 +52,7 @@ export default function AdminPage({ onSessionExpired }) {
               <div className="panel stat-card" key={key}><dt>{t(label)}</dt><dd>{data.summary[key].toLocaleString(i18n.resolvedLanguage)}</dd></div>
             ))}
           </dl>
+          {data.provider_usage && <AiUsagePanel usage={data.provider_usage} />}
           <section className="panel recent-panel" aria-labelledby="recent-heading">
             <div className="section-heading"><h2 id="recent-heading">{t('Recent AI requests')}</h2><span className="muted">{t('Latest 20')}</span></div>
             {data.recent_ai_requests.length === 0 ? (

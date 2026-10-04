@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Content;
 use App\Models\User;
+use App\Services\AiUsageAnalytics;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -71,6 +72,7 @@ class AdminDashboardTest extends TestCase
                     'total_tokens_used' => 0,
                 ],
                 'recent_ai_requests' => [],
+                'provider_usage' => app(AiUsageAnalytics::class)->snapshot(),
             ]);
     }
 
@@ -94,6 +96,7 @@ class AdminDashboardTest extends TestCase
         $pending = $user->aiRequests()->create(['status' => 'pending']);
 
         $this->actingAs($admin, 'web')->getJson('/api/admin/dashboard')->assertOk()->assertExactJson([
+            'provider_usage' => app(AiUsageAnalytics::class)->snapshot(),
             'summary' => [
                 'total_users' => 2,
                 'total_contents' => 3,

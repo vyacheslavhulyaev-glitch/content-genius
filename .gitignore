@@ -18,6 +18,9 @@
 /public/storage
 /storage/*.key
 /storage/pail
+# Temporary live accounting verification scripts and reports.
+/accounting-smoke-*.php
+/storage/app/private/accounting-smoke-*.json
 /vendor
 Homestead.json
 Homestead.yaml
