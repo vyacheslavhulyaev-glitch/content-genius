@@ -2,9 +2,14 @@
     "$schema": "https://getcomposer.org/schema.json",
     "name": "laravel/laravel",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
+    "description": "ContentGenius: an AI-powered multilingual SEO content generator built with Laravel and React.",
     "keywords": ["laravel", "framework"],
     "license": "MIT",
+    "authors": [
+        {
+            "name": "Viacheslav Huliaiev"
+        }
+    ],
     "require": {
         "php": "^8.2",
         "laravel/framework": "^12.0",
