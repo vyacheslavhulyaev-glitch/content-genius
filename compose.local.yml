@@ -1,0 +1,5 @@
+# Optional local verification only; never use this override on the VPS.
+services:
+  web:
+    ports:
+      - "127.0.0.1:8080:8080"

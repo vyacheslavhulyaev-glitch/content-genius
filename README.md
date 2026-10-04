@@ -20,6 +20,9 @@ technical SEO and application reliability.
 
 ## ContentGenius local SPA authentication
 
+Production container setup, PostgreSQL, local Docker verification and the shared proxy
+contract are documented in [Production Docker deployment](docs/production-docker.md).
+
 Use `http://localhost:5173` for React and `http://localhost:8000` for Laravel.
 Start Laravel with `php artisan serve --host=localhost --port=8000`.
 In `/frontend`, use `npm run dev -- --host localhost --port 5173 --strictPort`.

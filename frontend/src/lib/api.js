@@ -1,4 +1,5 @@
-const backendUrl = 'http://localhost:8000'
+const backendUrl = (import.meta.env?.VITE_API_BASE_URL
+  ?? (import.meta.env?.PROD ? '' : 'http://localhost:8000')).replace(/\/+$/, '')
 
 export async function request(path, options = {}) {
   try {
@@ -49,7 +50,7 @@ export function moderationErrorMessage(code) {
 export function csrfToken() {
   const cookie = document.cookie.split('; ').find((value) => value.startsWith('XSRF-TOKEN='))
   if (!cookie) {
-    throw new Error('XSRF-TOKEN cookie is missing. Check cookie settings and use localhost for both servers.')
+    throw new Error('XSRF-TOKEN cookie is missing. Check session cookie and origin settings.')
   }
   return decodeURIComponent(cookie.slice('XSRF-TOKEN='.length))
 }

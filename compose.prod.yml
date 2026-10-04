@@ -1,0 +1,87 @@
+name: contentgenius
+
+services:
+  web:
+    image: contentgenius-app:${CONTENTGENIUS_IMAGE_TAG:-local}
+    build:
+      context: .
+      target: production
+    restart: unless-stopped
+    init: true
+    env_file:
+      - ${CONTENTGENIUS_ENV_FILE:-.env.production}
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_KEY: ${APP_KEY:?Set APP_KEY in the production environment file}
+      APP_URL: ${APP_URL:?Set the public APP_URL}
+      DB_CONNECTION: pgsql
+      DB_URL: ""
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_DATABASE: ${DB_DATABASE:-contentgenius}
+      DB_USERNAME: ${DB_USERNAME:-contentgenius}
+      DB_PASSWORD: ${DB_PASSWORD:?Set a dedicated ContentGenius database password}
+      CACHE_STORE: database
+      SESSION_DRIVER: database
+      QUEUE_CONNECTION: sync
+      LOG_CHANNEL: stderr
+    volumes:
+      - app_storage:/var/www/html/storage
+    networks:
+      internal:
+      web:
+        aliases:
+          - contentgenius-web
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-contentgenius}
+      POSTGRES_USER: ${DB_USERNAME:-contentgenius}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set a dedicated ContentGenius database password}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  internal:
+    internal: true
+  web:
+    external: true
+    name: web
+
+volumes:
+  db_data:
+  app_storage:
