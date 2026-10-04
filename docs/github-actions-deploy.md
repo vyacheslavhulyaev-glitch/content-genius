@@ -231,7 +231,8 @@ Actions invokes `contentgenius-deploy <verified-sha>`; the forced-command gate
 loads the script from the verified main Git object.
 `scripts/deploy-production.sh` then:
 
-1. Uses `set -Eeuo pipefail` and private file permissions; acquires a server
+1. Uses `set -Eeuo pipefail` and `umask 022` for Git checkout/build operations,
+   overriding the gate's inherited restrictive umask; acquires a server
    `flock` in `backups/.deployment.lock` before any release changes.
 2. Checks checkout/branch/origin and existing `.env.production`; fetches `origin main`.
 3. Requires the requested SHA to exist on origin main and the current server HEAD
@@ -247,7 +248,10 @@ loads the script from the verified main Git object.
 6. Requires a non-empty dump and successful `pg_restore --list`, then renames the
    `.partial` file to `backups/pre-deploy-<UTC-timestamp>-<full-sha>.dump`. Backup
    failures stop deployment before migrations. Partial files are never treated
-   as verified backups. Credentials are read inside the existing DB container
+   as verified backups. The backups directory is explicitly mode 700; the
+   temporary dump is created with `install -m 600` before writing any data and
+   the final dump is explicitly chmod 600. Existing `.env.production` permissions
+   are unchanged. Credentials are read inside the existing DB container
    and are not printed. Backups are excluded from Git and Docker build context.
 7. Explicitly runs a one-off `web` container with
    `php artisan migrate --force --no-interaction`, then recreates only web using
@@ -358,6 +362,12 @@ They never access production, fetch a remote repository, migrate a real database
 or call OpenAI. The fixed production directory is replaced only in the disposable
 test copy. Gate tests cover rejected commands/SHAs, main verification, trusted
 Git-object execution, ignored client stdin, extraction failure and cleanup.
+Deployment tests also cover inherited umask handling, explicit backup protection
+and the Dockerfile's runtime permissions block. For a production image built from
+a context with source files mode 600 and directories mode 700, set
+`CONTENTGENIUS_PERMISSION_TEST_IMAGE` to its local tag before running these tests.
+The optional Docker regression runs as `www-data`, with networking disabled, and
+checks Composer reads, source ownership/write restrictions and absence of env files.
 If ShellCheck is installed, also run
 `shellcheck scripts/deploy-production.sh scripts/contentgenius-deploy-gate.sh`;
 otherwise report its absence without installing tools just for this milestone.

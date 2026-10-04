@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-umask 077
+umask 022
 
 readonly APP_DIR=/opt/apps/contentgenius
 readonly EXPECTED_SHA=${1:-}
@@ -12,7 +12,7 @@ trap 'printf "Deployment failed at line %s. Inspect the server state; no automat
 
 cd "$APP_DIR"
 [[ "$(git rev-parse --show-toplevel)" == "$(pwd -P)" ]]
-mkdir -p backups
+mkdir -p -m 700 backups
 chmod 700 backups
 exec 9>backups/.deployment.lock
 flock --exclusive --wait 900 9
@@ -45,12 +45,14 @@ compose=(docker compose --env-file .env.production -f compose.prod.yml)
 "${compose[@]}" stop web
 backup="backups/pre-deploy-$(date -u +%Y%m%dT%H%M%S-%N)-$EXPECTED_SHA.dump"
 partial="$backup.partial"
+install -m 600 /dev/null "$partial"
 # Expand database variables inside the container, never in the deploy shell.
 # shellcheck disable=SC2016
 "${compose[@]}" exec -T db sh -c 'exec pg_dump --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --format=custom --no-password' > "$partial"
 [[ -s "$partial" ]]
 "${compose[@]}" exec -T db pg_restore --list < "$partial" > /dev/null
 mv -- "$partial" "$backup"
+chmod 600 "$backup"
 printf 'Pre-deploy database backup verified: %s\n' "$backup"
 
 "${compose[@]}" run --rm --no-deps web php artisan migrate --force --no-interaction

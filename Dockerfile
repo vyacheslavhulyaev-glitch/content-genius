@@ -16,8 +16,8 @@ RUN apt-get update \
     && a2enmod rewrite headers \
     && printf 'Listen 8080\n' > /etc/apache2/ports.conf \
     && cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
-COPY docker/apache.conf /etc/apache2/sites-available/000-default.conf
-COPY docker/php.ini /usr/local/etc/php/conf.d/contentgenius.ini
+COPY --chmod=644 docker/apache.conf /etc/apache2/sites-available/000-default.conf
+COPY --chmod=644 docker/php.ini /usr/local/etc/php/conf.d/contentgenius.ini
 ENV APACHE_RUN_DIR=/tmp/apache2 \
     APACHE_PID_FILE=/tmp/apache2/apache2.pid \
     APACHE_LOCK_DIR=/tmp/apache2 \
@@ -49,9 +49,10 @@ COPY --from=frontend-build /build/frontend/dist/ public/
 COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/contentgenius-entrypoint
 RUN mkdir -p storage/app/private storage/app/public storage/framework/cache/data \
         storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
+    && chown -R root:root /var/www/html \
+    && chmod -R u=rwX,go=rX /var/www/html \
     && chown -R www-data:www-data storage bootstrap/cache \
-    && chmod -R u=rwX,g=rwX,o= storage bootstrap/cache \
-    && chmod 755 /var/www/html
+    && chmod -R u=rwX,g=rwX,o= storage bootstrap/cache
 USER www-data
 EXPOSE 8080
 ENTRYPOINT ["contentgenius-entrypoint"]

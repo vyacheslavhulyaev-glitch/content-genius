@@ -19,6 +19,11 @@ Apache handles static assets and PHP in one container, avoiding an extra nginx/F
 service for this small application. It runs as `www-data` on port 8080 with eight
 maximum workers, dropped capabilities and no privilege escalation. Only `storage/`
 and `bootstrap/cache/` need application write access. Source/vendor code is root-owned.
+The final image normalizes source permissions to owner read/write and group/other
+read access, adding execute access to directories and existing executables.
+This makes runtime reads independent of restrictive host checkout modes without
+making source writable by `www-data`. Apache/PHP configuration is copied as 644;
+only storage/cache retain `www-data` ownership and write access.
 The official PostgreSQL entrypoint initializes its volume and runs the server as its
 `postgres` user. Its dedicated database and user default to `contentgenius`.
 
