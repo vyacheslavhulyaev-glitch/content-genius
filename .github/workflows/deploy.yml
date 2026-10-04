@@ -114,8 +114,8 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KEY" > "$key_file"
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
           chmod 600 "$key_file" "$ssh_dir/known_hosts"
-          ssh -T -i "$key_file" -p "$DEPLOY_PORT" -l "$DEPLOY_USER" \
+          ssh -nT -i "$key_file" -p "$DEPLOY_PORT" -l "$DEPLOY_USER" \
             -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$ssh_dir/known_hosts" -o ConnectTimeout=15 \
             -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
-            "$DEPLOY_HOST" "bash -s -- '$EXPECTED_SHA'" < scripts/deploy-production.sh
+            "$DEPLOY_HOST" "contentgenius-deploy $EXPECTED_SHA"

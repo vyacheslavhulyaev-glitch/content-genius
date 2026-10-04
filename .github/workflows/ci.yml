@@ -63,9 +63,10 @@ jobs:
         run: |
           php vendor/bin/yaml-lint .github/workflows
           bash -n scripts/deploy-production.sh
-          node --test scripts/tests/workflows.test.cjs scripts/tests/deploy-production.test.cjs
+          bash -n scripts/contentgenius-deploy-gate.sh
+          node --test scripts/tests/workflows.test.cjs scripts/tests/deploy-production.test.cjs scripts/tests/deploy-gate.test.cjs
           if command -v shellcheck >/dev/null 2>&1; then
-            shellcheck scripts/deploy-production.sh
+            shellcheck scripts/deploy-production.sh scripts/contentgenius-deploy-gate.sh
           else
             echo 'ShellCheck unavailable; Bash syntax and deployment safety tests were run.'
           fi

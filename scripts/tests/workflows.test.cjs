@@ -97,7 +97,7 @@ test('missing, skipped, failed or wrong-SHA required jobs cannot deploy', async 
   }
 })
 
-test('runner SSH step uses strict trusted hosts, protected ephemeral key and validated SHA', () => {
+test('runner SSH step requests only forced-command deployment with strict trusted hosts and no streamed script', () => {
   const script = deploy.jobs.deploy.steps[1].run
   const bash = process.platform === 'win32' ? 'C:/Program Files/Git/bin/bash.exe' : 'bash'
   execFileSync(bash, ['-n'], { input: script })
@@ -106,5 +106,8 @@ test('runner SSH step uses strict trusted hosts, protected ephemeral key and val
   assert.match(script, /chmod 600/)
   assert.match(script, /trap .* EXIT/)
   assert.match(script, /\^\[a-f0-9\]\{40\}\$/)
-  assert.doesNotMatch(script, /StrictHostKeyChecking=no|ssh-keyscan|set -x/)
+  assert.match(script, /ssh -nT /)
+  assert.match(script, /"\$DEPLOY_HOST" "contentgenius-deploy \$EXPECTED_SHA"/)
+  assert.doesNotMatch(script, /StrictHostKeyChecking=no|ssh-keyscan|set -x|bash\s+-s|<\s*scripts\/|\|\s*ssh\b/)
+  assert.ok(ci.jobs.backend.steps.some(step => step.run?.includes('scripts/tests/deploy-gate.test.cjs')))
 })
