@@ -48,7 +48,7 @@ set -eu
 printf 'docker %s\\n' "$*" >> "$MOCK_LOG"
 case "$*" in
   *' config --quiet') [[ "\${MOCK_FAIL:-}" != config ]] ;;
-  *' build web') printf 'build-umask %s\\n' "$(umask)" >> "$MOCK_LOG"; [[ "\${MOCK_FAIL:-}" != build ]] ;;
+  *' build --pull web') printf 'build-umask %s\\n' "$(umask)" >> "$MOCK_LOG"; [[ "\${MOCK_FAIL:-}" != build ]] ;;
   *' stop web') : ;;
   *' exec -T db sh -c '*)
     if [[ "\${MOCK_FAIL:-}" == dump ]]; then printf 'PGDMP-partial'; exit 1; fi
@@ -90,7 +90,7 @@ test('verified SHA deployment orders lock, fetch, exact checkout, build, backup,
   const { result, log, directory } = fixture(t)
   assert.equal(result.status, 0, result.stderr)
   const order = ['flock --exclusive --wait 900 9', 'git fetch --no-tags', `git merge --ff-only ${sha}`, 'config --quiet',
-    'build web', 'stop web', 'pg_dump', 'pg_restore --list', 'artisan migrate --force', 'up -d --no-deps', 'inspect --format', 'curl ']
+    'build --pull web', 'stop web', 'pg_dump', 'pg_restore --list', 'artisan migrate --force', 'up -d --no-deps', 'inspect --format', 'curl ']
   const positions = order.map(value => { const index = log.indexOf(value); assert.ok(index >= 0, value); return index })
   assert.deepEqual(positions, [...positions].sort((a, b) => a - b))
   const backups = readdirSync(join(directory, 'backups')).filter(name => name.startsWith('pre-deploy-') && name.endsWith('.dump'))

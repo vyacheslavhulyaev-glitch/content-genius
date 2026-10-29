@@ -39,7 +39,8 @@ printf 'Deploying %s; previous checkout %s\n' "$EXPECTED_SHA" "$previous_sha"
 
 compose=(docker compose --env-file .env.production -f compose.prod.yml)
 "${compose[@]}" config --quiet
-"${compose[@]}" build web
+# --pull picks up patched PHP base images (security releases) instead of a cached one.
+"${compose[@]}" build --pull web
 
 # Pause HTTP writes only after a successful build. PostgreSQL stays running.
 "${compose[@]}" stop web
